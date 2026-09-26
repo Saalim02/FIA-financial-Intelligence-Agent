@@ -1,7 +1,7 @@
 # core/engines/metric_engine.py
 
 import numpy as np
-
+import pandas as pd
 
 class MetricEngine:
 
@@ -27,7 +27,7 @@ class MetricEngine:
             col_lower = col.lower()
 
             # Skip non-numeric columns
-            if not np.issubdtype(df[col].dtype, np.number):
+            if not pd.api.types.is_numeric_dtype(df[col]):
                 continue
 
             if any(word in col_lower for word in ["sales", "revenue", "income"]):
