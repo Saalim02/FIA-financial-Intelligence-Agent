@@ -15,7 +15,7 @@ class AggregationEngine:
         if kpi not in df.columns:
             return {"error": f"KPI column '{kpi}' not found."}
 
-        if not np.issubdtype(df[kpi].dtype, np.number):
+        if not is_numeric_column(df, kpi):
             return {"error": f"KPI column '{kpi}' must be numeric."}
 
         identifier_columns = []

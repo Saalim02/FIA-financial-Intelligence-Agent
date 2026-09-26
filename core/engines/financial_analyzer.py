@@ -26,10 +26,10 @@ class FinancialAnalyzer:
             return {"error": f"Profit column '{profit_col}' not found."}
 
         # Ensure numeric
-        if revenue_col and not np.issubdtype(df[revenue_col].dtype, np.number):
+        if revenue_col and not is_numeric_column(df, revenue_col):
             return {"error": "Revenue column must be numeric."}
 
-        if profit_col and not np.issubdtype(df[profit_col].dtype, np.number):
+        if profit_col and not is_numeric_column(df, profit_col):
             return {"error": "Profit column must be numeric."}
 
         # ---------------------------------------

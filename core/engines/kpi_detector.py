@@ -17,7 +17,7 @@ class KPIDetector:
             col_lower = col.lower()
 
             if any(word in col_lower for word in ["sales", "revenue", "income"]):
-                if np.issubdtype(df[col].dtype, np.number):
+                if is_numeric_column(df, col):
                     return col
 
         # -------------------------

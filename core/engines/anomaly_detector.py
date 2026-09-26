@@ -1,7 +1,7 @@
 # core/engines/anomaly_detector.py
 
 import numpy as np
-
+from core.utils.dataframe_utils import is_numeric_column
 
 class AnomalyDetector:
 
@@ -21,7 +21,7 @@ class AnomalyDetector:
             if column not in df.columns:
                 continue
 
-            if not np.issubdtype(df[column].dtype, np.number):
+            if not is_numeric_column(df, column):
                 continue
 
             series = df[column].dropna()

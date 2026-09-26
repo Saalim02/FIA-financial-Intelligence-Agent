@@ -2,7 +2,7 @@
 
 import pandas as pd
 import numpy as np
-
+from core.utils.dataframe_utils import is_numeric_column
 
 class TimeAnalyzer:
 
@@ -15,7 +15,7 @@ class TimeAnalyzer:
         metric_col = None
         if entities:
             for col in entities:
-                if col in df.columns and np.issubdtype(df[col].dtype, np.number):
+                if is_numeric_column(df, col):
                     metric_col = col
                     break
 
