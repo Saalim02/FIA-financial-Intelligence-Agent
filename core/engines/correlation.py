@@ -18,7 +18,7 @@ class CorrelationEngine:
         corr_matrix = numeric_df.corr().dropna(how="all").fillna(0)
 
         strongest_pair = None
-        strongest_value = 0
+        strongest_correlation = 0
 
         columns = corr_matrix.columns
 
@@ -28,16 +28,33 @@ class CorrelationEngine:
                 col1 = columns[i]
                 col2 = columns[j]
 
-                value = abs(corr_matrix.iloc[i, j])
+                correlation = corr_matrix.iloc[i, j]
 
-                if value > 0.3 and value > strongest_value:
-                    strongest_value = value
+                if (
+                    abs(correlation) > 0.3
+                    and abs(correlation) > abs(strongest_correlation)
+                ):
+                    strongest_correlation = correlation
                     strongest_pair = (col1, col2)
 
         if strongest_pair:
+            strength = (
+                "strong"
+                if abs(strongest_correlation) >= 0.7
+                else "moderate"
+            )
+
+            direction = (
+                "positive"
+                if strongest_correlation > 0
+                else "negative"
+            )
+
             return {
                 "strongest_pair": strongest_pair,
-                "correlation": round(strongest_value, 3)
+                "correlation": round(strongest_correlation, 3),
+                "strength": strength,
+                "direction": direction
             }
 
         return ["No strong correlations detected (>|0.3|)."]
