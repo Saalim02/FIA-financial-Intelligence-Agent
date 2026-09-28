@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from core.utils.dataframe_utils import is_numeric_column
 
 class FinancialAnalyzer:
 
