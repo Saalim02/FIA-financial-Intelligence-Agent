@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 streamlit==1.32.2
 altair==4.2.2
 pandas==2.2.2
@@ -10,19 +9,12 @@ pandasql==0.7.3
 openpyxl==3.1.2
 sqlalchemy==2.0.29
 pillow>=10.0
-=======
-pandas
-numpy
-openai
-python-dotenv
 pytest
-openpyxl
 xlrd
-streamlit
 matplotlib
 seaborn
-plotly
-pandasql
 fastapi
 python-multipart
->>>>>>> 3402bbf (feat: add FastAPI service layer)
+langgraph
+pypdf
+sentence-transformers

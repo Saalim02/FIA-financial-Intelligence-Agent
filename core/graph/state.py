@@ -1,0 +1,19 @@
+from typing import Any, TypedDict
+
+
+class FinancialAgentState(TypedDict, total=False):
+    question: str
+    dataset_id: str
+    df: Any
+
+    intent: str
+    route: str
+
+    metrics: dict
+    entities: list[str]
+
+    result: Any
+    evidence: list[dict]
+
+    answer: str
+    error: str
