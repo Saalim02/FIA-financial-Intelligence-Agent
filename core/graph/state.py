@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 class FinancialAgentState(TypedDict, total=False):
     question: str
     dataset_id: str
+    document_path: str
     df: Any
 
     intent: str
