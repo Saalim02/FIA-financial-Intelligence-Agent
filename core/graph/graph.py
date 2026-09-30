@@ -5,6 +5,7 @@ from core.graph.nodes import (
     evidence_fusion_node,
     financial_analysis_node,
     financial_reasoning_node,
+    mcp_market_node,
     rag_node,
     trend_node,
 )
@@ -13,6 +14,23 @@ from core.graph.state import FinancialAgentState
 
 def query_understanding(state: FinancialAgentState):
     question = state["question"].lower()
+
+    # MCP / market questions
+    if any(
+        word in question
+        for word in [
+            "stock",
+            "share price",
+            "market price",
+            "current price",
+            "market",
+            "quote",
+        ]
+    ):
+        return {
+            "intent": "market_data",
+            "route": "mcp",
+        }
 
     # RAG / document questions
     if any(
@@ -106,6 +124,10 @@ def build_graph():
     )
 
     builder.add_node(
+        "mcp",
+        mcp_market_node)
+
+    builder.add_node(
         "evidence_fusion",
         evidence_fusion_node,
     )
@@ -136,6 +158,7 @@ def build_graph():
             "trend": "trend_analysis",
             "anomaly": "anomaly_detection",
             "rag": "rag",
+            "mcp": "mcp",
         },
     )
 
@@ -161,6 +184,10 @@ def build_graph():
     builder.add_edge(
         "rag",
         "evidence_fusion",
+    )
+
+    builder.add_edge(
+        "mcp", "evidence_fusion"
     )
 
     # -------------------------

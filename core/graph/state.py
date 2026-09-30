@@ -13,8 +13,10 @@ class FinancialAgentState(TypedDict, total=False):
     metrics: dict
     entities: list[str]
 
+    mcp_symbol: str
+    mcp_result: dict
+
     result: Any
     evidence: list[dict]
-
     answer: str
     error: str

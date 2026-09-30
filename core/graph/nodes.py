@@ -3,11 +3,29 @@ from core.engines.anomaly_detector import AnomalyDetector
 from core.engines.financial_analyzer import FinancialAnalyzer
 from core.engines.time_analyzer import TimeAnalyzer
 from core.rag.rag_node import FinancialRAG
+from core.mcp.client import MCPClient
 
 financial_analyzer = FinancialAnalyzer()
 time_analyzer = TimeAnalyzer()
 anomaly_detector = AnomalyDetector()
 
+mcp_client = MCPClient()
+
+def mcp_market_node(state: FinancialAgentState):
+    symbol = state.get("mcp_symbol")
+
+    if not symbol:
+        return {
+            "result": [],
+            "error": "No market symbol was provided for MCP."
+        }
+
+    result = mcp_client.get_market_quote(symbol)
+
+    return {
+        "result": result,
+        "mcp_result": result,
+    }
 
 def financial_analysis_node(state):
     df = state["df"]
@@ -74,7 +92,7 @@ def anomaly_node(state):
     return {
         "result": result
     }
-    
+
 def evidence_fusion_node(state):
     result = state.get("result")
 
@@ -91,7 +109,7 @@ def evidence_fusion_node(state):
     return {
         "evidence": [evidence]
     }
-    
+
 def financial_reasoning_node(state: FinancialAgentState):
     evidence = state.get("evidence", [])
 
@@ -108,24 +126,69 @@ def financial_reasoning_node(state: FinancialAgentState):
 
         findings.append(f"[{source}]")
 
-        if isinstance(source_findings, list):
+        if source == "mcp" and isinstance(source_findings, dict):
+            symbol = source_findings.get("symbol", "unknown")
+            price = source_findings.get("price", "unknown")
+            currency = source_findings.get("currency", "")
+            change_percent = source_findings.get(
+                "change_percent",
+                "unknown",
+            )
+            source_name = source_findings.get(
+                "source",
+                "unknown",
+            )
+            timestamp = source_findings.get(
+                "timestamp",
+                "unknown",
+            )
+
+            findings.append(
+                f"{symbol} market price: "
+                f"{price} {currency}"
+            )
+            findings.append(
+                f"Change: {change_percent}%"
+            )
+            findings.append(
+                f"Source: {source_name}"
+            )
+            findings.append(
+                f"Timestamp: {timestamp}"
+            )
+
+        elif isinstance(source_findings, list):
             for finding in source_findings:
                 if isinstance(finding, dict):
                     text = finding.get("text", "")
                     metadata = finding.get("metadata", {})
 
-                    source_name = metadata.get("source", "unknown")
-                    page = metadata.get("page", "unknown")
+                    source_name = metadata.get(
+                        "source",
+                        "unknown",
+                    )
+                    page = metadata.get(
+                        "page",
+                        "unknown",
+                    )
                     score = finding.get("score")
 
-                    findings.append(
-                        f"{text} "
-                        f"(Source: {source_name}, "
-                        f"Page: {page}, "
-                        f"Score: {score:.3f})"
-                    )
+                    if score is not None:
+                        findings.append(
+                            f"{text} "
+                            f"(Source: {source_name}, "
+                            f"Page: {page}, "
+                            f"Score: {score:.3f})"
+                        )
+                    else:
+                        findings.append(
+                            f"{text} "
+                            f"(Source: {source_name}, "
+                            f"Page: {page})"
+                        )
                 else:
                     findings.append(str(finding))
+
         else:
             findings.append(str(source_findings))
 
