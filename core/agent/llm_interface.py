@@ -1,6 +1,5 @@
-# core/agent/llm_interface.py
-
 from openai import OpenAI
+from pydantic import BaseModel
 
 
 class LLMInterface:
@@ -33,3 +32,39 @@ class LLMInterface:
 
         except Exception as e:
             return f'{{"error": "LLM call failed", "details": "{str(e)}"}}'
+
+    def generate_structured(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type[BaseModel],
+    ) -> BaseModel:
+        """
+        Generate a structured response validated by a Pydantic model.
+        """
+
+        try:
+            response = self.client.beta.chat.completions.parse(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0,
+                response_format=response_model,
+            )
+
+            if not response.choices:
+                raise RuntimeError("LLM returned no choices.")
+
+            parsed = response.choices[0].message.parsed
+
+            if parsed is None:
+                raise RuntimeError("LLM returned no structured response.")
+
+            return parsed
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Structured LLM call failed: {str(e)}"
+            ) from e

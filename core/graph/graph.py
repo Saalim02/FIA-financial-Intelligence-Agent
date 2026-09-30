@@ -1,11 +1,13 @@
 from langgraph.graph import END, START, StateGraph
 
 from core.graph.nodes import (
+    guardrail_node,
     anomaly_node,
     evidence_fusion_node,
     financial_analysis_node,
     financial_reasoning_node,
     mcp_market_node,
+    output_guardrail_node,
     rag_node,
     trend_node,
 )
@@ -90,6 +92,42 @@ def query_understanding(state: FinancialAgentState):
 def route_question(state: FinancialAgentState):
     return state["route"]
 
+def route_after_guardrail(state: FinancialAgentState):
+    if state.get("guardrail_safe") is True:
+        return "safe"
+
+    return "unsafe"
+
+def output_guardrail_rejection_node(state: FinancialAgentState):
+    reason = state.get(
+        "output_guardrail_reason",
+        "The generated answer could not be safely returned.",
+    )
+
+    return {
+        "output_guardrail_safe": False,
+        "answer": (
+            "The generated answer was blocked by the output guardrail: "
+            f"{reason}"
+        ),
+    }
+    
+def route_after_output_guardrail(state: FinancialAgentState):
+    if state.get("output_guardrail_safe") is True:
+        return "safe"
+
+    return "unsafe"
+    
+    
+def guardrail_rejection_node(state: FinancialAgentState):
+    reason = state.get(
+        "guardrail_reason",
+        "The request could not be processed.",
+    )
+
+    return {
+        "answer": f"Request rejected by security guardrail: {reason}"
+    }
 
 def build_graph():
     builder = StateGraph(FinancialAgentState)
@@ -136,6 +174,25 @@ def build_graph():
         "financial_reasoning",
         financial_reasoning_node,
     )
+    
+    builder.add_node(
+        "guardrail",
+        guardrail_node,
+    )
+    
+    builder.add_node(
+        "output_guardrail_rejection",
+        output_guardrail_rejection_node,
+    )
+    builder.add_node(
+        "guardrail_rejection",
+        guardrail_rejection_node,
+    )
+    
+    builder.add_node(
+        "output_guardrail",
+        output_guardrail_node,
+    )
 
     # -------------------------
     # START -> Query Understanding
@@ -143,7 +200,21 @@ def build_graph():
 
     builder.add_edge(
         START,
-        "query_understanding",
+        "guardrail",
+    )
+    
+    builder.add_conditional_edges(
+        "guardrail",
+        route_after_guardrail,
+        {
+            "safe": "query_understanding",
+            "unsafe": "guardrail_rejection",
+        },
+    )
+    
+    builder.add_edge(
+        "guardrail_rejection",
+        END,
     )
 
     # -------------------------
@@ -200,11 +271,25 @@ def build_graph():
     )
 
     # -------------------------
-    # Reasoning -> END
+    # Reasoning -> Output Guardrail
     # -------------------------
 
     builder.add_edge(
         "financial_reasoning",
+        "output_guardrail",
+    )
+
+    builder.add_conditional_edges(
+        "output_guardrail",
+        route_after_output_guardrail,
+        {
+            "safe": END,
+            "unsafe": "output_guardrail_rejection",
+        },
+    )
+
+    builder.add_edge(
+        "output_guardrail_rejection",
         END,
     )
 

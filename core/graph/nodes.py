@@ -4,12 +4,53 @@ from core.engines.financial_analyzer import FinancialAnalyzer
 from core.engines.time_analyzer import TimeAnalyzer
 from core.rag.rag_node import FinancialRAG
 from core.mcp.client import MCPClient
+from core.guardrails.input_guardrails import validate_input
+from core.guardrails.classifier import GuardrailClassifier
+from core.guardrails.output_classifier import OutputGuardrailClassifier
 
 financial_analyzer = FinancialAnalyzer()
 time_analyzer = TimeAnalyzer()
 anomaly_detector = AnomalyDetector()
 
 mcp_client = MCPClient()
+
+def guardrail_node(state: FinancialAgentState):
+    question = state.get("question")
+
+    validation = validate_input(question)
+
+    if not validation["valid"]:
+        return {
+            "guardrail_safe": False,
+            "guardrail_reason": validation["reason"],
+            "error": validation["reason"],
+        }
+
+    classifier = state.get("guardrail_classifier")
+
+    if classifier is None:
+        return {
+            "guardrail_safe": False,
+            "guardrail_reason": "Guardrail classifier is not configured.",
+            "error": "Guardrail classifier is not configured.",
+        }
+
+    result = classifier.classify(validation["query"])
+
+    if not result.is_safe:
+        return {
+            "guardrail_safe": False,
+            "guardrail_result": result.model_dump(),
+            "guardrail_reason": result.reason,
+            "error": f"Request rejected by guardrail: {result.reason}",
+        }
+
+    return {
+        "guardrail_safe": True,
+        "guardrail_result": result.model_dump(),
+        "guardrail_reason": result.reason,
+        "question": validation["query"],
+    }
 
 def mcp_market_node(state: FinancialAgentState):
     symbol = state.get("mcp_symbol")
@@ -196,4 +237,40 @@ def financial_reasoning_node(state: FinancialAgentState):
 
     return {
         "answer": answer
+    }
+
+def output_guardrail_node(state: FinancialAgentState):
+    question = state.get("question", "")
+    answer = state.get("answer", "")
+    evidence = state.get("evidence", [])
+
+    classifier = state.get("output_guardrail_classifier")
+
+    if classifier is None:
+        return {
+            "output_guardrail_safe": False,
+            "output_guardrail_reason": (
+                "Output guardrail classifier is not configured."
+            ),
+            "error": "Output guardrail classifier is not configured.",
+        }
+
+    result = classifier.classify(
+        question=question,
+        answer=answer,
+        evidence=evidence,
+    )
+
+    if not result.is_safe:
+        return {
+            "output_guardrail_safe": False,
+            "output_guardrail_result": result.model_dump(),
+            "output_guardrail_reason": result.reason,
+            "error": f"Answer rejected by output guardrail: {result.reason}",
+        }
+
+    return {
+        "output_guardrail_safe": True,
+        "output_guardrail_result": result.model_dump(),
+        "output_guardrail_reason": result.reason,
     }
