@@ -16,6 +16,7 @@ class FinancialAgentState(TypedDict, total=False):
     output_guardrail_result: dict
     output_guardrail_reason: str
     output_guardrail_classifier: Any
+    reasoning_llm: Any
     
     intent: str
     route: str

@@ -155,10 +155,29 @@ def financial_reasoning_node(state: FinancialAgentState):
     evidence = state.get("evidence", [])
 
     if not evidence:
-        return {
-            "answer": "No financial evidence was produced."
-        }
+        return {"answer": "No financial evidence was produced."}
 
+    reasoning_llm = state.get("reasoning_llm")
+
+    if reasoning_llm is not None:
+        try:
+            answer = reasoning_llm.reason(
+                question=state["question"],
+                evidence=evidence,
+            )
+
+            return {"answer": answer}
+
+        except Exception as exc:
+            return {
+                "answer": (
+                    "Financial reasoning failed. "
+                    f"Reason: {exc}"
+                )
+            }
+
+    # Fallback for tests and environments where no reasoning model
+    # has been injected.
     findings = []
 
     for item in evidence:
@@ -171,31 +190,13 @@ def financial_reasoning_node(state: FinancialAgentState):
             symbol = source_findings.get("symbol", "unknown")
             price = source_findings.get("price", "unknown")
             currency = source_findings.get("currency", "")
-            change_percent = source_findings.get(
-                "change_percent",
-                "unknown",
-            )
-            source_name = source_findings.get(
-                "source",
-                "unknown",
-            )
-            timestamp = source_findings.get(
-                "timestamp",
-                "unknown",
-            )
+            change_percent = source_findings.get("change_percent", "unknown")
 
             findings.append(
-                f"{symbol} market price: "
-                f"{price} {currency}"
+                f"{symbol} market price: {price} {currency}"
             )
             findings.append(
                 f"Change: {change_percent}%"
-            )
-            findings.append(
-                f"Source: {source_name}"
-            )
-            findings.append(
-                f"Timestamp: {timestamp}"
             )
 
         elif isinstance(source_findings, list):
@@ -204,14 +205,8 @@ def financial_reasoning_node(state: FinancialAgentState):
                     text = finding.get("text", "")
                     metadata = finding.get("metadata", {})
 
-                    source_name = metadata.get(
-                        "source",
-                        "unknown",
-                    )
-                    page = metadata.get(
-                        "page",
-                        "unknown",
-                    )
+                    source_name = metadata.get("source", "unknown")
+                    page = metadata.get("page", "unknown")
                     score = finding.get("score")
 
                     if score is not None:
@@ -224,20 +219,17 @@ def financial_reasoning_node(state: FinancialAgentState):
                     else:
                         findings.append(
                             f"{text} "
-                            f"(Source: {source_name}, "
-                            f"Page: {page})"
+                            f"(Source: {source_name}, Page: {page})"
                         )
+
                 else:
                     findings.append(str(finding))
 
         else:
             findings.append(str(source_findings))
 
-    answer = "\n".join(findings)
+    return {"answer": "\n".join(findings)}
 
-    return {
-        "answer": answer
-    }
 
 def output_guardrail_node(state: FinancialAgentState):
     question = state.get("question", "")

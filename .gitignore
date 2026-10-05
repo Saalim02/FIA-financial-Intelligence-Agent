@@ -4,7 +4,7 @@ __pycache__/
 *.so
 
 # Virtual environment
-agent/
+/agent/
 .venv/
 venv/
 
@@ -42,3 +42,9 @@ temp/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Evaluation virtual environment
+/eval-agent/
+
+# Local screenshots
+/Screenshots/
