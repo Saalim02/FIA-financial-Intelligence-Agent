@@ -1,3 +1,8 @@
+import logging
+import time
+
+from core.observability.logging import get_logger, log_event
+
 from langgraph.graph import END, START, StateGraph
 
 from core.graph.nodes import (
@@ -11,8 +16,65 @@ from core.graph.nodes import (
     rag_node,
     trend_node,
 )
+
 from core.graph.state import FinancialAgentState
 
+
+logger = get_logger(__name__)
+
+
+def observe_node(node_name, node_function):
+    """Wrap a LangGraph node with timing and error logging."""
+
+    def wrapped(state):
+        start = time.perf_counter()
+
+        log_event(
+            logger,
+            logging.INFO,
+            "graph_node_started",
+            node=node_name,
+        )
+
+        try:
+            result = node_function(state)
+
+            duration_ms = round(
+                (time.perf_counter() - start) * 1000,
+                2,
+            )
+
+            log_event(
+                logger,
+                logging.INFO,
+                "graph_node_completed",
+                node=node_name,
+                duration_ms=duration_ms,
+            )
+
+            return result
+
+        except Exception as exc:
+            duration_ms = round(
+                (time.perf_counter() - start) * 1000,
+                2,
+            )
+
+            logger.exception(
+                "graph_node_failed",
+                extra={
+                    "event": "graph_node_failed",
+                    "data": {
+                        "node": node_name,
+                        "duration_ms": duration_ms,
+                        "error_type": type(exc).__name__,
+                    },
+                },
+            )
+
+            raise
+
+    return wrapped
 
 def query_understanding(state: FinancialAgentState):
     question = state["question"].lower()
@@ -132,66 +194,104 @@ def guardrail_rejection_node(state: FinancialAgentState):
 def build_graph():
     builder = StateGraph(FinancialAgentState)
 
-    # -------------------------
+        # -------------------------
     # Nodes
     # -------------------------
 
     builder.add_node(
         "query_understanding",
-        query_understanding,
+        observe_node(
+            "query_understanding",
+            query_understanding,
+        ),
     )
 
     builder.add_node(
         "financial_analysis",
-        financial_analysis_node,
+        observe_node(
+            "financial_analysis",
+            financial_analysis_node,
+        ),
     )
 
     builder.add_node(
         "trend_analysis",
-        trend_node,
+        observe_node(
+            "trend_analysis",
+            trend_node,
+        ),
     )
 
     builder.add_node(
         "anomaly_detection",
-        anomaly_node,
+        observe_node(
+            "anomaly_detection",
+            anomaly_node,
+        ),
     )
 
     builder.add_node(
         "rag",
-        rag_node,
+        observe_node(
+            "rag",
+            rag_node,
+        ),
     )
 
     builder.add_node(
         "mcp",
-        mcp_market_node)
+        observe_node(
+            "mcp",
+            mcp_market_node,
+        ),
+    )
 
     builder.add_node(
         "evidence_fusion",
-        evidence_fusion_node,
+        observe_node(
+            "evidence_fusion",
+            evidence_fusion_node,
+        ),
     )
 
     builder.add_node(
         "financial_reasoning",
-        financial_reasoning_node,
+        observe_node(
+            "financial_reasoning",
+            financial_reasoning_node,
+        ),
     )
-    
+
     builder.add_node(
         "guardrail",
-        guardrail_node,
+        observe_node(
+            "guardrail",
+            guardrail_node,
+        ),
     )
-    
-    builder.add_node(
-        "output_guardrail_rejection",
-        output_guardrail_rejection_node,
-    )
+
     builder.add_node(
         "guardrail_rejection",
-        guardrail_rejection_node,
+        observe_node(
+            "guardrail_rejection",
+            guardrail_rejection_node,
+        ),
     )
-    
+
     builder.add_node(
         "output_guardrail",
-        output_guardrail_node,
+        observe_node(
+            "output_guardrail",
+            output_guardrail_node,
+        ),
+    )
+
+    builder.add_node(
+        "output_guardrail_rejection",
+        observe_node(
+            "output_guardrail_rejection",
+            output_guardrail_rejection_node,
+        ),
     )
 
     # -------------------------

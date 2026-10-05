@@ -7,6 +7,9 @@ from core.mcp.client import MCPClient
 from core.guardrails.input_guardrails import validate_input
 from core.guardrails.classifier import GuardrailClassifier
 from core.guardrails.output_classifier import OutputGuardrailClassifier
+from core.observability.logging import get_logger, log_event
+import logging
+import time
 
 financial_analyzer = FinancialAnalyzer()
 time_analyzer = TimeAnalyzer()
@@ -14,12 +17,23 @@ anomaly_detector = AnomalyDetector()
 
 mcp_client = MCPClient()
 
+logger = get_logger(__name__)
+
 def guardrail_node(state: FinancialAgentState):
     question = state.get("question")
 
     validation = validate_input(question)
 
     if not validation["valid"]:
+        log_event(
+            logger,
+            logging.WARNING,
+            "input_guardrail_decision",
+            safe=False,
+            validation_failed=True,
+            reason=validation["reason"],
+        )
+
         return {
             "guardrail_safe": False,
             "guardrail_reason": validation["reason"],
@@ -36,6 +50,16 @@ def guardrail_node(state: FinancialAgentState):
         }
 
     result = classifier.classify(validation["query"])
+
+    log_event(
+        logger,
+        logging.INFO if result.is_safe else logging.WARNING,
+        "input_guardrail_decision",
+        safe=result.is_safe,
+        prompt_injection=result.is_prompt_injection,
+        pii=result.is_pii,
+        irrelevant=result.is_irrelevant,
+    )
 
     if not result.is_safe:
         return {
