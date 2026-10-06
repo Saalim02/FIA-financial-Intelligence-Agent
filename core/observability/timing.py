@@ -5,11 +5,12 @@ from contextlib import contextmanager
 @contextmanager
 def timer():
     start = time.perf_counter()
+    result = {"elapsed_seconds": 0.0}
 
     try:
-        yield
+        yield result
     finally:
-        elapsed = time.perf_counter() - start
+        result["elapsed_seconds"] = time.perf_counter() - start
 
 
 def measure_time():

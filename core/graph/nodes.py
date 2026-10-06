@@ -43,6 +43,14 @@ def guardrail_node(state: FinancialAgentState):
     classifier = state.get("guardrail_classifier")
 
     if classifier is None:
+        log_event(
+            logger,
+            logging.ERROR,
+            "output_guardrail_decision",
+            safe=False,
+            classifier_configured=False,
+        )
+
         return {
             "guardrail_safe": False,
             "guardrail_reason": "Guardrail classifier is not configured.",
@@ -278,6 +286,16 @@ def output_guardrail_node(state: FinancialAgentState):
     )
 
     if not result.is_safe:
+        log_event(
+            logger,
+            logging.INFO,
+            "output_guardrail_decision",
+            safe=True,
+            grounded=result.is_grounded,
+            unsupported_claims=result.contains_unsupported_claims,
+            pii=result.contains_pii,
+        )
+
         return {
             "output_guardrail_safe": False,
             "output_guardrail_result": result.model_dump(),

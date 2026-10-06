@@ -1,4 +1,5 @@
 import time
+import logging
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -71,16 +72,13 @@ async def observability_middleware(request: Request, call_next):
             2,
         )
 
-        logger.exception(
+        log_event(
+            logger,
+            logging.ERROR,
             "request_failed",
-            extra={
-                "event": "request_failed",
-                "data": {
-                    "method": request.method,
-                    "path": request.url.path,
-                    "duration_ms": duration_ms,
-                },
-            },
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms,
         )
 
         raise

@@ -60,16 +60,13 @@ def observe_node(node_name, node_function):
                 2,
             )
 
-            logger.exception(
+            log_event(
+                logger,
+                logging.ERROR,
                 "graph_node_failed",
-                extra={
-                    "event": "graph_node_failed",
-                    "data": {
-                        "node": node_name,
-                        "duration_ms": duration_ms,
-                        "error_type": type(exc).__name__,
-                    },
-                },
+                node=node_name,
+                duration_ms=duration_ms,
+                error_type=type(exc).__name__,
             )
 
             raise

@@ -30,10 +30,10 @@ def query_dataset(request: QueryRequest):
             detail=str(exc),
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Query failed: {exc}",
+            detail="Internal server error.",
         )
 
     return QueryResponse(
