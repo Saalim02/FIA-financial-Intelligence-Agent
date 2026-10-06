@@ -1,57 +1,75 @@
+import os
+
+from dotenv import load_dotenv
+
 from api.services.dataset_service import DatasetService
+
+from core.agent.financial_reasoner import FinancialReasoner
+from core.agent.llm_interface import LLMInterface
+from core.graph.graph import build_graph
+from core.guardrails.classifier import GuardrailClassifier
+from core.guardrails.output_classifier import OutputGuardrailClassifier
+
+
+load_dotenv()
 
 
 class QueryService:
     def __init__(self, dataset_service: DatasetService):
         self.dataset_service = dataset_service
 
+        api_key = os.getenv("OPENAI_API_KEY")
+
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY is required for the Financial Intelligence API."
+            )
+
+        llm = LLMInterface(
+            api_key=api_key,
+            model="gpt-4o-mini",
+        )
+
+        self.guardrail_classifier = GuardrailClassifier(llm)
+        self.output_guardrail_classifier = OutputGuardrailClassifier(llm)
+        self.reasoner = FinancialReasoner(llm)
+
+        self.graph = build_graph()
+
     def answer_query(self, dataset_id: str, question: str) -> dict:
         df = self.dataset_service.get_dataset(dataset_id)
 
-        question_lower = question.lower()
-
-        result = {
-            "total_revenue": None,
-            "total_profit": None,
-            "profit_margin": None,
+        state = {
+            "question": question,
+            "dataset_id": dataset_id,
+            "df": df,
+            "guardrail_classifier": self.guardrail_classifier,
+            "output_guardrail_classifier": self.output_guardrail_classifier,
+            "reasoning_llm": self.reasoner,
         }
 
-        if "revenue" in question_lower:
-            if "revenue" not in df.columns:
-                raise ValueError("Revenue column not found.")
+        result = self.graph.invoke(state)
 
-            result["total_revenue"] = float(df["revenue"].sum())
-
-        if "profit" in question_lower:
-            if "profit" not in df.columns:
-                raise ValueError("Profit column not found.")
-
-            result["total_profit"] = float(df["profit"].sum())
-
-        if "margin" in question_lower:
-            if "revenue" not in df.columns:
-                raise ValueError("Revenue column not found.")
-
-            if "profit" not in df.columns:
-                raise ValueError("Profit column not found.")
-
-            total_revenue = df["revenue"].sum()
-            total_profit = df["profit"].sum()
-
-            if total_revenue == 0:
-                raise ValueError(
-                    "Cannot calculate profit margin because revenue is zero."
-                )
-
-            result["profit_margin"] = round(
-                float((total_profit / total_revenue) * 100),
-                2,
-            )
-
-        if all(value is None for value in result.values()):
+        if not result.get("guardrail_safe", False):
             raise ValueError(
-                "The query is not supported yet. "
-                "Try asking about revenue, profit, or profit margin."
+                result.get(
+                    "guardrail_reason",
+                    "Query rejected by input guardrail.",
+                )
             )
 
-        return result
+        if not result.get("output_guardrail_safe", False):
+            raise ValueError(
+                result.get(
+                    "output_guardrail_reason",
+                    "Answer rejected by output guardrail.",
+                )
+            )
+
+        return {
+            "answer": result.get("answer"),
+            "result": result.get("result"),
+            "evidence": result.get("evidence", []),
+            "intent": result.get("intent"),
+            "route": result.get("route"),
+        }

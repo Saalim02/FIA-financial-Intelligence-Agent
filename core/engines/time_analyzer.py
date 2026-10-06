@@ -1,8 +1,7 @@
-# core/engines/time_analyzer.py
-
 import pandas as pd
-import numpy as np
+
 from core.utils.dataframe_utils import is_numeric_column
+
 
 class TimeAnalyzer:
 
@@ -13,6 +12,7 @@ class TimeAnalyzer:
 
         # Identify metric column from entities
         metric_col = None
+
         if entities:
             for col in entities:
                 if is_numeric_column(df, col):
@@ -22,7 +22,7 @@ class TimeAnalyzer:
         if not metric_col:
             return {"error": "No numeric metric provided for trend analysis."}
 
-        # Detect date column automatically
+        # Detect date column
         date_column = self._detect_date_column(df)
 
         if not date_column:
@@ -30,53 +30,109 @@ class TimeAnalyzer:
 
         temp_df = df.copy()
 
-        temp_df[date_column] = pd.to_datetime(temp_df[date_column], errors="coerce")
+        temp_df[date_column] = pd.to_datetime(
+            temp_df[date_column],
+            errors="coerce",
+        )
 
-        if temp_df[date_column].isnull().all():
+        # Remove rows where date could not be parsed
+        temp_df = temp_df.dropna(subset=[date_column])
+
+        if temp_df.empty:
             return {"error": "Date column could not be parsed."}
 
-        temp_df["Year"] = temp_df[date_column].dt.year
+        # -------------------------------------------------
+        # Multiple years -> yearly trend
+        # -------------------------------------------------
 
-        yearly_group = temp_df.groupby("Year")[metric_col].sum()
+        years = temp_df[date_column].dt.year.nunique()
 
-        if yearly_group.empty:
+        if years > 1:
+
+            temp_df["Year"] = temp_df[date_column].dt.year
+
+            grouped = temp_df.groupby("Year")[metric_col].sum()
+
+            if grouped.empty:
+                return {"error": "Insufficient data for trend analysis."}
+
+            return self._build_trend_insights(
+                grouped,
+                metric_col,
+                period_name="Year",
+            )
+
+        # -------------------------------------------------
+        # Single year -> monthly trend
+        # -------------------------------------------------
+
+        temp_df["Month"] = temp_df[date_column].dt.to_period("M")
+
+        grouped = temp_df.groupby("Month")[metric_col].sum()
+
+        if grouped.empty:
             return {"error": "Insufficient data for trend analysis."}
 
+        return self._build_trend_insights(
+            grouped,
+            metric_col,
+            period_name="Month",
+        )
+
+    def _build_trend_insights(
+        self,
+        grouped,
+        metric_col,
+        period_name,
+    ):
         insights = []
 
-        # Best and worst year
-        best_year = yearly_group.idxmax()
-        worst_year = yearly_group.idxmin()
+        # Best period
+        best_period = grouped.idxmax()
+
+        # Worst period
+        worst_period = grouped.idxmin()
 
         insights.append(
-            f"Best {metric_col} Year: {best_year} "
-            f"({round(yearly_group.loc[best_year], 2)})"
+            f"Best {metric_col} {period_name}: "
+            f"{best_period} ({round(grouped.loc[best_period], 2)})"
         )
 
         insights.append(
-            f"Worst {metric_col} Year: {worst_year} "
-            f"({round(yearly_group.loc[worst_year], 2)})"
+            f"Worst {metric_col} {period_name}: "
+            f"{worst_period} ({round(grouped.loc[worst_period], 2)})"
         )
 
         # Growth calculation
-        if len(yearly_group) > 1:
-            first_year = yearly_group.index.min()
-            last_year = yearly_group.index.max()
+        if len(grouped) > 1:
 
-            first_value = yearly_group.loc[first_year]
-            last_value = yearly_group.loc[last_year]
+            first_period = grouped.index.min()
+            last_period = grouped.index.max()
+
+            first_value = grouped.loc[first_period]
+            last_value = grouped.loc[last_period]
 
             if first_value != 0:
-                growth = (last_value - first_value) / first_value * 100
+
+                growth = (
+                    (last_value - first_value)
+                    / first_value
+                    * 100
+                )
+
                 insights.append(
-                    f"{metric_col} Growth from {first_year} to {last_year}: "
+                    f"{metric_col} Growth from "
+                    f"{first_period} to {last_period}: "
                     f"{round(growth, 2)}%"
                 )
 
         return insights
 
     def _detect_date_column(self, df):
+
         for col in df.columns:
+
             if "date" in col.lower():
                 return col
+
         return None

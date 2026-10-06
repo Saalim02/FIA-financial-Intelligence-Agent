@@ -78,8 +78,27 @@ def observe_node(node_name, node_function):
 
 def query_understanding(state: FinancialAgentState):
     question = state["question"].lower()
+    df = state.get("df")
 
+    # ---------------------------------
+    # Extract metrics/entities
+    # ---------------------------------
+
+    entities = []
+
+    if df is not None:
+        columns = list(df.columns)
+
+        for column in columns:
+            column_lower = str(column).lower()
+
+            if column_lower in question:
+                entities.append(column)
+
+    # ---------------------------------
     # MCP / market questions
+    # ---------------------------------
+
     if any(
         word in question
         for word in [
@@ -94,9 +113,13 @@ def query_understanding(state: FinancialAgentState):
         return {
             "intent": "market_data",
             "route": "mcp",
+            "entities": entities,
         }
 
+    # ---------------------------------
     # RAG / document questions
+    # ---------------------------------
+
     if any(
         word in question
         for word in [
@@ -111,9 +134,13 @@ def query_understanding(state: FinancialAgentState):
         return {
             "intent": "document_analysis",
             "route": "rag",
+            "entities": entities,
         }
 
+    # ---------------------------------
     # Anomaly questions
+    # ---------------------------------
+
     if any(
         word in question
         for word in [
@@ -126,9 +153,13 @@ def query_understanding(state: FinancialAgentState):
         return {
             "intent": "anomaly_detection",
             "route": "anomaly",
+            "entities": entities,
         }
 
+    # ---------------------------------
     # Trend questions
+    # ---------------------------------
+
     if any(
         word in question
         for word in [
@@ -142,12 +173,17 @@ def query_understanding(state: FinancialAgentState):
         return {
             "intent": "trend_analysis",
             "route": "trend",
+            "entities": entities,
         }
 
+    # ---------------------------------
     # Default financial analysis
+    # ---------------------------------
+
     return {
         "intent": "financial_analysis",
         "route": "financial",
+        "entities": entities,
     }
 
 
