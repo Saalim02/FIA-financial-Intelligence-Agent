@@ -2,6 +2,10 @@ import time
 import logging
 from uuid import uuid4
 
+from core.observability.langsmith_config import configure_langsmith
+
+configure_langsmith()
+
 from fastapi import FastAPI, Request
 from api.routes.health import router as health_router
 from api.routes.dataset import router as dataset_router

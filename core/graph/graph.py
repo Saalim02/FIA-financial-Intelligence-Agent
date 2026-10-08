@@ -82,6 +82,14 @@ def query_understanding(state: FinancialAgentState):
     relevant dataset columns.
 
     This function does not assume any particular dataset schema.
+
+    For financial questions, all explicitly requested dataset
+    columns are preserved as metrics so multi-metric questions
+    such as:
+
+        "What was the total sales and profit?"
+
+    can be answered using both Sales and Profit.
     """
 
     question = state["question"]
@@ -201,12 +209,38 @@ def query_understanding(state: FinancialAgentState):
     # Default financial analysis
     # ---------------------------------------------------------
 
+    # Preserve every explicitly mentioned dataset column.
+    #
+    # Example:
+    #
+    # "What was the total sales and profit?"
+    #
+    # ColumnResolver -> ["Sales", "Profit"]
+    #
+    # Therefore:
+    #
+    # metrics = {
+    #     "metrics": ["Sales", "Profit"]
+    # }
+    #
+    # FinancialAnalyzer already supports this format.
+    requested_metrics = [
+        column
+        for column in entities
+        if df is not None and column in df.columns
+    ]
+
+    # Fallback to the semantic numeric resolver when no
+    # explicit dataset column was mentioned.
+    if not requested_metrics and numeric_column:
+        requested_metrics = [numeric_column]
+
     return {
         "intent": "financial_analysis",
         "route": "financial",
         "entities": entities,
         "metrics": {
-            "primary": numeric_column,
+            "metrics": requested_metrics,
         },
     }
 
