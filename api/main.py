@@ -3,10 +3,10 @@ import logging
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-
 from api.routes.health import router as health_router
 from api.routes.dataset import router as dataset_router
 from api.routes.query import router as query_router
+from api.routes.voice import router as voice_router
 
 from core.observability.logging import (
     get_logger,
@@ -87,3 +87,4 @@ async def observability_middleware(request: Request, call_next):
 app.include_router(health_router)
 app.include_router(dataset_router)
 app.include_router(query_router)
+app.include_router(voice_router)
