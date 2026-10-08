@@ -1,126 +1,271 @@
-# core/engines/financial_analyzer.py
+from __future__ import annotations
 
-import numpy as np
+from typing import Any
 
+import pandas as pd
+
+from core.data.schema_profiler import SchemaProfiler
 from core.utils.dataframe_utils import is_numeric_column
 
+
 class FinancialAnalyzer:
+    """
+    Dataset-agnostic financial/quantitative analyzer.
 
-    def run(self, df, metrics=None):
+    Responsibilities:
+    - Inspect the actual dataset schema.
+    - Analyze dynamically selected numeric columns.
+    - Calculate descriptive statistics.
+    - Perform generic categorical group analysis.
+    - Avoid assuming columns such as Revenue, Sales, Profit, or Region.
+    - Never treat identifier columns as financial metrics.
+    """
 
-        if df.empty:
-            return {"error": "Empty dataframe."}
+    def run(
+        self,
+        df: pd.DataFrame,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict | list[str]:
 
-        if not metrics:
-            return {"error": "No financial metrics provided."}
+        # ---------------------------------------------------------
+        # Validate dataframe
+        # ---------------------------------------------------------
 
-        revenue_col = metrics.get("revenue")
-        profit_col = metrics.get("profit")
+        if df is None or df.empty:
+            return {
+                "error": "Empty dataframe."
+            }
 
-        insights = []
+        # ---------------------------------------------------------
+        # Profile actual dataset
+        # ---------------------------------------------------------
 
-        # Validate columns
-        if revenue_col and revenue_col not in df.columns:
-            return {"error": f"Revenue column '{revenue_col}' not found."}
+        profile = SchemaProfiler.profile(df)
 
-        if profit_col and profit_col not in df.columns:
-            return {"error": f"Profit column '{profit_col}' not found."}
+        useful_numeric_columns = profile.get(
+            "useful_numeric_columns",
+            [],
+        )
 
-        # Ensure numeric
-        if revenue_col and not is_numeric_column(df, revenue_col):
-            return {"error": "Revenue column must be numeric."}
-
-        if profit_col and not is_numeric_column(df, profit_col):
-            return {"error": "Profit column must be numeric."}
-
-        # ---------------------------------------
-        # TOTAL REVENUE & PROFIT
-        # ---------------------------------------
-        if revenue_col:
-            total_revenue = df[revenue_col].sum()
-            insights.append(f"Total Revenue: {round(total_revenue, 2)}")
-
-        if profit_col:
-            total_profit = df[profit_col].sum()
-            insights.append(f"Total Profit: {round(total_profit, 2)}")
-
-            loss_rows = df[df[profit_col] < 0]
-            if not loss_rows.empty:
-                insights.append(
-                    f"Warning: {len(loss_rows)} records show negative profit."
+        if not useful_numeric_columns:
+            return {
+                "error": (
+                    "No useful numeric columns were found "
+                    "in the dataset."
                 )
+            }
 
-        # ---------------------------------------
-        # OVERALL MARGIN
-        # ---------------------------------------
-        if revenue_col and profit_col:
-            total_revenue = df[revenue_col].sum()
-            total_profit = df[profit_col].sum()
+        # ---------------------------------------------------------
+        # Resolve requested metric columns
+        # ---------------------------------------------------------
 
-            if total_revenue != 0:
-                overall_margin = total_profit / total_revenue
-                insights.append(
-                    f"Overall Profit Margin: {round(overall_margin * 100, 2)}%"
-                )
+        selected_columns = self._resolve_metric_columns(
+            df=df,
+            metrics=metrics,
+            useful_numeric_columns=useful_numeric_columns,
+        )
 
-        # ---------------------------------------
-        # REGION-WISE FINANCIAL ANALYSIS
-        # ---------------------------------------
-        region_col = None
-        for col in df.columns:
-            if "region" in col.lower():
-                region_col = col
-                break
+        # ---------------------------------------------------------
+        # Dataset-agnostic fallback
+        # ---------------------------------------------------------
 
-        if revenue_col and profit_col and region_col:
+        if not selected_columns:
+            selected_columns = useful_numeric_columns
 
-            region_group = (
-                df.groupby(region_col)[[revenue_col, profit_col]]
-                .sum()
+        # ---------------------------------------------------------
+        # Generate insights
+        # ---------------------------------------------------------
+
+        insights: list[str] = []
+
+        # Dataset overview
+        insights.append(
+            f"Dataset contains {len(df)} records and "
+            f"{len(df.columns)} columns."
+        )
+
+        # ---------------------------------------------------------
+        # Numeric metric analysis
+        # ---------------------------------------------------------
+
+        for column in selected_columns:
+
+            if column not in df.columns:
+                continue
+
+            if not is_numeric_column(df, column):
+                continue
+
+            series = df[column].dropna()
+
+            if series.empty:
+                continue
+
+            total = series.sum()
+            average = series.mean()
+            minimum = series.min()
+            maximum = series.max()
+
+            insights.append(
+                f"'{column}': "
+                f"total={self._round_value(total)}, "
+                f"average={self._round_value(average)}, "
+                f"minimum={self._round_value(minimum)}, "
+                f"maximum={self._round_value(maximum)}."
             )
 
-            # Avoid division by zero
-            region_group["Margin"] = np.where(
-                region_group[revenue_col] != 0,
-                region_group[profit_col] / region_group[revenue_col],
-                0
+        # ---------------------------------------------------------
+        # Generic categorical group analysis
+        # ---------------------------------------------------------
+
+        categorical_columns = profile.get(
+            "categorical_columns",
+            [],
+        )
+
+        # Limit automatic dimensions so large datasets
+        # do not generate excessive output.
+        for dimension in categorical_columns[:3]:
+
+            if dimension not in df.columns:
+                continue
+
+            unique_values = (
+                df[dimension]
+                .dropna()
+                .unique()
             )
 
-            if not region_group.empty:
+            if len(unique_values) < 2:
+                continue
 
-                top_profit_region = region_group[profit_col].idxmax()
-                worst_profit_region = region_group[profit_col].idxmin()
+            # Analyze only a few metrics per dimension.
+            for metric_column in selected_columns[:3]:
+
+                if metric_column not in df.columns:
+                    continue
+
+                if not is_numeric_column(
+                    df,
+                    metric_column,
+                ):
+                    continue
+
+                grouped = (
+                    df.groupby(dimension)[metric_column]
+                    .sum()
+                    .dropna()
+                )
+
+                if grouped.empty:
+                    continue
+
+                highest_group = grouped.idxmax()
+                lowest_group = grouped.idxmin()
 
                 insights.append(
-                    f"Most Profitable Region: {top_profit_region} "
-                    f"({round(region_group.loc[top_profit_region, profit_col], 2)})"
+                    f"'{metric_column}' highest "
+                    f"by {dimension}: "
+                    f"{highest_group} "
+                    f"({self._round_value(grouped.loc[highest_group])})."
                 )
 
                 insights.append(
-                    f"Worst Performing Region (Profit): {worst_profit_region} "
-                    f"({round(region_group.loc[worst_profit_region, profit_col], 2)})"
+                    f"'{metric_column}' lowest "
+                    f"by {dimension}: "
+                    f"{lowest_group} "
+                    f"({self._round_value(grouped.loc[lowest_group])})."
                 )
 
-                highest_margin_region = region_group["Margin"].idxmax()
-                lowest_margin_region = region_group["Margin"].idxmin()
-
-                insights.append(
-                    f"Highest Margin Region: {highest_margin_region} "
-                    f"({round(region_group.loc[highest_margin_region, 'Margin'] * 100, 2)}%)"
-                )
-
-                insights.append(
-                    f"Lowest Margin Region: {lowest_margin_region} "
-                    f"({round(region_group.loc[lowest_margin_region, 'Margin'] * 100, 2)}%)"
-                )
-
-                loss_regions = region_group[region_group[profit_col] < 0]
-
-                if not loss_regions.empty:
-                    loss_list = ", ".join(loss_regions.index.tolist())
-                    insights.append(f"Loss-Making Regions: {loss_list}")
+        # ---------------------------------------------------------
+        # Final safety
+        # ---------------------------------------------------------
 
         if not insights:
-            return ["No financial insights generated."]
+            return [
+                "No financial insights could be generated "
+                "from the available dataset."
+            ]
 
         return insights
+
+    # =============================================================
+    # Metric resolution
+    # =============================================================
+
+    def _resolve_metric_columns(
+        self,
+        df: pd.DataFrame,
+        metrics: dict[str, Any] | None,
+        useful_numeric_columns: list[str],
+    ) -> list[str]:
+        """
+        Resolve metric columns supplied by Query Understanding /
+        ColumnResolver.
+
+        Supports formats such as:
+
+            {"primary": "Sales"}
+
+            {"metric": "Profit"}
+
+            {"metrics": ["Sales", "Profit"]}
+
+        No dataset-specific column names are assumed.
+        """
+
+        if not isinstance(metrics, dict):
+            return []
+
+        selected_columns: list[str] = []
+
+        for value in metrics.values():
+
+            # -----------------------------------------------------
+            # Single column
+            # -----------------------------------------------------
+
+            if isinstance(value, str):
+
+                if (
+                    value in df.columns
+                    and value in useful_numeric_columns
+                    and value not in selected_columns
+                ):
+                    selected_columns.append(value)
+
+            # -----------------------------------------------------
+            # Multiple columns
+            # -----------------------------------------------------
+
+            elif isinstance(value, (list, tuple, set)):
+
+                for column in value:
+
+                    if not isinstance(column, str):
+                        continue
+
+                    if (
+                        column in df.columns
+                        and column in useful_numeric_columns
+                        and column not in selected_columns
+                    ):
+                        selected_columns.append(column)
+
+        return selected_columns
+
+    # =============================================================
+    # Numeric formatting
+    # =============================================================
+
+    @staticmethod
+    def _round_value(value: Any) -> float:
+        """
+        Safely round numeric values for output.
+        """
+
+        try:
+            return round(float(value), 2)
+
+        except (TypeError, ValueError):
+            return value

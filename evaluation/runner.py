@@ -1,12 +1,12 @@
 import sys
 from pathlib import Path
+import argparse
+import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
-import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,11 +21,50 @@ from evaluation.mocks import (
 )
 
 
+def load_dataset(path: str) -> pd.DataFrame:
+    """Load CSV or Excel datasets based on file extension."""
+
+    dataset_path = Path(path)
+
+    if not dataset_path.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {dataset_path}"
+        )
+
+    suffix = dataset_path.suffix.lower()
+
+    if suffix == ".csv":
+        df = pd.read_csv(dataset_path)
+
+    elif suffix in {".xls", ".xlsx"}:
+        df = pd.read_excel(dataset_path)
+
+    else:
+        raise ValueError(
+            f"Unsupported dataset format: {suffix}. "
+            "Supported formats: .csv, .xls, .xlsx"
+        )
+
+    if df.empty:
+        raise ValueError("Dataset is empty.")
+
+    print(
+        f"\nDATASET LOADED: {dataset_path.name}"
+    )
+    print(
+        f"Rows: {len(df)} | Columns: {len(df.columns)}"
+    )
+
+    return df
+
+
 class AgentEvaluator:
 
-    def __init__(self):
+    def __init__(self, dataset_path: str):
         self.graph = build_graph()
-        self.df = pd.read_csv("test_financial_data.csv")
+
+        # Load the actual dataset supplied by the user.
+        self.df = load_dataset(dataset_path)
 
         api_key = os.getenv("OPENAI_API_KEY")
 
@@ -90,7 +129,6 @@ class AgentEvaluator:
 
         return state
 
-
     def run(self):
 
         results = []
@@ -114,12 +152,28 @@ class AgentEvaluator:
         return results
 
 
-if __name__ == "__main__":
+def main():
 
-    evaluator = AgentEvaluator()
+    parser = argparse.ArgumentParser(
+        description="Run Financial Intelligence Agent evaluation."
+    )
+
+    parser.add_argument(
+        "--dataset",
+        default="test_financial_data.xls",
+        help="Path to CSV/XLS/XLSX dataset.",
+    )
+
+    args = parser.parse_args()
+
+    evaluator = AgentEvaluator(args.dataset)
 
     results = evaluator.run()
 
     for result in results:
         print("\n---")
         print(result)
+
+
+if __name__ == "__main__":
+    main()

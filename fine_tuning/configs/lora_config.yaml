@@ -1,6 +1,6 @@
 model:
   name: Qwen/Qwen2.5-1.5B-Instruct
-  max_seq_length: 1024
+  max_seq_length: 512
 
 training:
   output_dir: fine_tuning/output

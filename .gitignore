@@ -48,3 +48,7 @@ Thumbs.db
 
 # Local screenshots
 /Screenshots/
+
+# Fine-tuning model artifacts
+fine_tuning/output/
+fine_tuning/output_behavioral/

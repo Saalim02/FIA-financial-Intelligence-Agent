@@ -1,138 +1,126 @@
 import pandas as pd
 
-from core.utils.dataframe_utils import is_numeric_column
+from core.data.schema_profiler import SchemaProfiler
 
 
 class TimeAnalyzer:
 
     def run(self, df, entities=None):
-
-        if df.empty:
+        if df is None or df.empty:
             return {"error": "Empty dataframe."}
 
-        # Identify metric column from entities
-        metric_col = None
+        profile = SchemaProfiler.profile(df)
+
+        # Use requested entities only when they actually exist and are numeric.
+        metric_columns = []
 
         if entities:
-            for col in entities:
-                if is_numeric_column(df, col):
-                    metric_col = col
-                    break
+            for column in entities:
+                if (
+                    column in df.columns
+                    and column in profile["useful_numeric_columns"]
+                ):
+                    metric_columns.append(column)
 
-        if not metric_col:
-            return {"error": "No numeric metric provided for trend analysis."}
+        # Dataset-agnostic fallback.
+        if not metric_columns:
+            metric_columns = profile["useful_numeric_columns"]
 
-        # Detect date column
-        date_column = self._detect_date_column(df)
+        if not metric_columns:
+            return {
+                "error": "No useful numeric columns available for trend analysis."
+            }
 
-        if not date_column:
-            return {"error": "No date column detected."}
+        date_columns = profile["datetime_columns"]
+
+        if not date_columns:
+            return {
+                "error": "No usable date/time column detected for trend analysis."
+            }
+
+        date_column = date_columns[0]
 
         temp_df = df.copy()
 
         temp_df[date_column] = pd.to_datetime(
             temp_df[date_column],
             errors="coerce",
+            format="mixed",
         )
 
-        # Remove rows where date could not be parsed
         temp_df = temp_df.dropna(subset=[date_column])
 
         if temp_df.empty:
             return {"error": "Date column could not be parsed."}
 
-        # -------------------------------------------------
-        # Multiple years -> yearly trend
-        # -------------------------------------------------
-
-        years = temp_df[date_column].dt.year.nunique()
-
-        if years > 1:
-
-            temp_df["Year"] = temp_df[date_column].dt.year
-
-            grouped = temp_df.groupby("Year")[metric_col].sum()
-
-            if grouped.empty:
-                return {"error": "Insufficient data for trend analysis."}
-
-            return self._build_trend_insights(
-                grouped,
-                metric_col,
-                period_name="Year",
-            )
-
-        # -------------------------------------------------
-        # Single year -> monthly trend
-        # -------------------------------------------------
-
-        temp_df["Month"] = temp_df[date_column].dt.to_period("M")
-
-        grouped = temp_df.groupby("Month")[metric_col].sum()
-
-        if grouped.empty:
-            return {"error": "Insufficient data for trend analysis."}
-
-        return self._build_trend_insights(
-            grouped,
-            metric_col,
-            period_name="Month",
-        )
-
-    def _build_trend_insights(
-        self,
-        grouped,
-        metric_col,
-        period_name,
-    ):
         insights = []
 
-        # Best period
-        best_period = grouped.idxmax()
+        for metric_col in metric_columns:
+            series = temp_df[metric_col]
 
-        # Worst period
-        worst_period = grouped.idxmin()
+            if series.dropna().empty:
+                continue
 
-        insights.append(
-            f"Best {metric_col} {period_name}: "
-            f"{best_period} ({round(grouped.loc[best_period], 2)})"
-        )
+            years = temp_df[date_column].dt.year.nunique()
 
-        insights.append(
-            f"Worst {metric_col} {period_name}: "
-            f"{worst_period} ({round(grouped.loc[worst_period], 2)})"
-        )
-
-        # Growth calculation
-        if len(grouped) > 1:
-
-            first_period = grouped.index.min()
-            last_period = grouped.index.max()
-
-            first_value = grouped.loc[first_period]
-            last_value = grouped.loc[last_period]
-
-            if first_value != 0:
-
-                growth = (
-                    (last_value - first_value)
-                    / first_value
-                    * 100
+            if years > 1:
+                temp_df["_analysis_period"] = temp_df[date_column].dt.year
+                period_name = "Year"
+            else:
+                temp_df["_analysis_period"] = (
+                    temp_df[date_column].dt.to_period("M")
                 )
+                period_name = "Month"
 
-                insights.append(
-                    f"{metric_col} Growth from "
-                    f"{first_period} to {last_period}: "
-                    f"{round(growth, 2)}%"
-                )
+            grouped = temp_df.groupby("_analysis_period")[metric_col].sum()
+
+            if grouped.empty:
+                continue
+
+            metric_insights = self._build_trend_insights(
+                grouped,
+                metric_col,
+                period_name,
+            )
+
+            insights.extend(metric_insights)
+
+        if not insights:
+            return {"error": "Insufficient data for trend analysis."}
 
         return insights
 
-    def _detect_date_column(self, df):
+    def _build_trend_insights(self, grouped, metric_col, period_name):
+        insights = []
 
-        for col in df.columns:
+        if grouped.empty:
+            return ["Insufficient data for trend analysis."]
 
-            if "date" in col.lower():
-                return col
+        best_period = grouped.idxmax()
+        worst_period = grouped.idxmin()
 
-        return None
+        best_value = grouped.max()
+        worst_value = grouped.min()
+
+        insights.append(
+            f"Best {period_name.lower()}: "
+            f"{best_period} with {metric_col} of {round(best_value, 2)}."
+        )
+
+        insights.append(
+            f"Worst {period_name.lower()}: "
+            f"{worst_period} with {metric_col} of {round(worst_value, 2)}."
+        )
+
+        first_value = grouped.iloc[0]
+        last_value = grouped.iloc[-1]
+
+        if first_value != 0:
+            growth = ((last_value - first_value) / abs(first_value)) * 100
+
+            insights.append(
+                f"{metric_col} growth from the first to the last "
+                f"{period_name.lower()} was {round(growth, 2)}%."
+            )
+
+        return insights

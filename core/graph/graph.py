@@ -5,6 +5,8 @@ from core.observability.logging import get_logger, log_event
 
 from langgraph.graph import END, START, StateGraph
 
+from core.data.column_resolver import ColumnResolver
+
 from core.graph.nodes import (
     guardrail_node,
     anomaly_node,
@@ -73,31 +75,53 @@ def observe_node(node_name, node_function):
 
     return wrapped
 
+
 def query_understanding(state: FinancialAgentState):
-    question = state["question"].lower()
+    """
+    Understand the user's question and dynamically resolve
+    relevant dataset columns.
+
+    This function does not assume any particular dataset schema.
+    """
+
+    question = state["question"]
+    question_lower = question.lower()
+
     df = state.get("df")
 
-    # ---------------------------------
-    # Extract metrics/entities
-    # ---------------------------------
+    # ---------------------------------------------------------
+    # Resolve dataset columns dynamically
+    # ---------------------------------------------------------
 
     entities = []
+    numeric_column = None
 
     if df is not None:
-        columns = list(df.columns)
+        resolution = ColumnResolver.resolve(
+            df=df,
+            question=question,
+        )
 
-        for column in columns:
-            column_lower = str(column).lower()
+        entities = resolution.get(
+            "explicit_columns",
+            [],
+        )
 
-            if column_lower in question:
-                entities.append(column)
+        numeric_column = resolution.get(
+            "numeric_column",
+        )
 
-    # ---------------------------------
+        # If the semantic resolver found a numeric column,
+        # make sure it is available to downstream analysis.
+        if numeric_column and numeric_column not in entities:
+            entities.append(numeric_column)
+
+    # ---------------------------------------------------------
     # MCP / market questions
-    # ---------------------------------
+    # ---------------------------------------------------------
 
     if any(
-        word in question
+        word in question_lower
         for word in [
             "stock",
             "share price",
@@ -113,12 +137,12 @@ def query_understanding(state: FinancialAgentState):
             "entities": entities,
         }
 
-    # ---------------------------------
+    # ---------------------------------------------------------
     # RAG / document questions
-    # ---------------------------------
+    # ---------------------------------------------------------
 
     if any(
-        word in question
+        word in question_lower
         for word in [
             "report",
             "annual report",
@@ -134,12 +158,12 @@ def query_understanding(state: FinancialAgentState):
             "entities": entities,
         }
 
-    # ---------------------------------
+    # ---------------------------------------------------------
     # Anomaly questions
-    # ---------------------------------
+    # ---------------------------------------------------------
 
     if any(
-        word in question
+        word in question_lower
         for word in [
             "anomaly",
             "unusual",
@@ -153,12 +177,12 @@ def query_understanding(state: FinancialAgentState):
             "entities": entities,
         }
 
-    # ---------------------------------
+    # ---------------------------------------------------------
     # Trend questions
-    # ---------------------------------
+    # ---------------------------------------------------------
 
     if any(
-        word in question
+        word in question_lower
         for word in [
             "trend",
             "over time",
@@ -173,25 +197,30 @@ def query_understanding(state: FinancialAgentState):
             "entities": entities,
         }
 
-    # ---------------------------------
+    # ---------------------------------------------------------
     # Default financial analysis
-    # ---------------------------------
+    # ---------------------------------------------------------
 
     return {
         "intent": "financial_analysis",
         "route": "financial",
         "entities": entities,
+        "metrics": {
+            "primary": numeric_column,
+        },
     }
 
 
 def route_question(state: FinancialAgentState):
     return state["route"]
 
+
 def route_after_guardrail(state: FinancialAgentState):
     if state.get("guardrail_safe") is True:
         return "safe"
 
     return "unsafe"
+
 
 def output_guardrail_rejection_node(state: FinancialAgentState):
     reason = state.get(
@@ -206,14 +235,15 @@ def output_guardrail_rejection_node(state: FinancialAgentState):
             f"{reason}"
         ),
     }
-    
+
+
 def route_after_output_guardrail(state: FinancialAgentState):
     if state.get("output_guardrail_safe") is True:
         return "safe"
 
     return "unsafe"
-    
-    
+
+
 def guardrail_rejection_node(state: FinancialAgentState):
     reason = state.get(
         "guardrail_reason",
@@ -221,15 +251,19 @@ def guardrail_rejection_node(state: FinancialAgentState):
     )
 
     return {
-        "answer": f"Request rejected by security guardrail: {reason}"
+        "answer": (
+            "Request rejected by security guardrail: "
+            f"{reason}"
+        )
     }
+
 
 def build_graph():
     builder = StateGraph(FinancialAgentState)
 
-        # -------------------------
+    # ---------------------------------------------------------
     # Nodes
-    # -------------------------
+    # ---------------------------------------------------------
 
     builder.add_node(
         "query_understanding",
@@ -327,15 +361,15 @@ def build_graph():
         ),
     )
 
-    # -------------------------
-    # START -> Query Understanding
-    # -------------------------
+    # ---------------------------------------------------------
+    # START -> Guardrail
+    # ---------------------------------------------------------
 
     builder.add_edge(
         START,
         "guardrail",
     )
-    
+
     builder.add_conditional_edges(
         "guardrail",
         route_after_guardrail,
@@ -344,15 +378,15 @@ def build_graph():
             "unsafe": "guardrail_rejection",
         },
     )
-    
+
     builder.add_edge(
         "guardrail_rejection",
         END,
     )
 
-    # -------------------------
+    # ---------------------------------------------------------
     # Query Understanding -> Route
-    # -------------------------
+    # ---------------------------------------------------------
 
     builder.add_conditional_edges(
         "query_understanding",
@@ -366,9 +400,9 @@ def build_graph():
         },
     )
 
-    # -------------------------
+    # ---------------------------------------------------------
     # Analysis -> Evidence Fusion
-    # -------------------------
+    # ---------------------------------------------------------
 
     builder.add_edge(
         "financial_analysis",
@@ -391,21 +425,22 @@ def build_graph():
     )
 
     builder.add_edge(
-        "mcp", "evidence_fusion"
+        "mcp",
+        "evidence_fusion",
     )
 
-    # -------------------------
+    # ---------------------------------------------------------
     # Evidence Fusion -> Reasoning
-    # -------------------------
+    # ---------------------------------------------------------
 
     builder.add_edge(
         "evidence_fusion",
         "financial_reasoning",
     )
 
-    # -------------------------
+    # ---------------------------------------------------------
     # Reasoning -> Output Guardrail
-    # -------------------------
+    # ---------------------------------------------------------
 
     builder.add_edge(
         "financial_reasoning",
