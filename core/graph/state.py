@@ -25,6 +25,8 @@ class FinancialAgentState(TypedDict, total=False):
     mcp_symbol: str
     mcp_result: dict
     result: Any
+    visualization: dict | None
     evidence: list[dict]
     answer: str
     error: str
+    conversation_history: list[dict]

@@ -7,6 +7,7 @@ import pandas as pd
 class DatasetService:
     def __init__(self):
         self.datasets: dict[str, pd.DataFrame] = {}
+        self.filenames: dict[str, str] = {}
 
     def load_dataset(self, filename: str, contents: bytes) -> tuple[str, pd.DataFrame]:
         filename_lower = filename.lower()
@@ -34,6 +35,7 @@ class DatasetService:
         dataset_id = str(uuid4())
 
         self.datasets[dataset_id] = df
+        self.filenames[dataset_id] = filename
 
         return dataset_id, df
 
@@ -42,3 +44,6 @@ class DatasetService:
             raise KeyError(f"Dataset not found: {dataset_id}")
 
         return self.datasets[dataset_id]
+
+    def get_filename(self, dataset_id: str) -> str | None:
+        return self.filenames.get(dataset_id)

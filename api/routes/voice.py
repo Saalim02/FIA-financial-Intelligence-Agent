@@ -27,7 +27,8 @@ voice_query_service = VoiceQueryService(
 
 @router.post("/voice/query", response_model=VoiceResponse)
 async def voice_query(
-    dataset_id: str = Form(...),
+    dataset_id: str | None = Form(None),
+    session_id: str | None = Form(None, max_length=64),
     audio: UploadFile = File(...),
 ):
     try:
@@ -48,6 +49,7 @@ async def voice_query(
             dataset_id=dataset_id,
             audio_bytes=audio_bytes,
             filename=audio.filename or "audio.wav",
+            session_id=session_id,
         )
 
         return VoiceResponse(**result)

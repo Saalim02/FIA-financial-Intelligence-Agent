@@ -21,6 +21,7 @@ htmlcov/
 # Logs
 *.log
 logs/
+*.tsbuildinfo
 
 # IDE
 .vscode/
@@ -52,3 +53,23 @@ Thumbs.db
 # Fine-tuning model artifacts
 fine_tuning/output/
 fine_tuning/output_behavioral/
+fine_tuning/evaluation_results.json
+fine_tuning/checkpoints/
+
+# Additional local datasets / media
+*.xls
+*.xlsx
+*.csv
+*.mp3
+*.wav
+*.webm
+
+# Local backups
+*.backup
+
+# Python local artifacts
+*.pyc
+
+# Model / ML caches
+.cache/
+.huggingface/

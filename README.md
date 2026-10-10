@@ -1,365 +1,97 @@
-📊 AI Financial Intelligence Engine
+# Financial Intelligence Agent
 
-AI Data Analytics Project combining:
+Financial Intelligence Agent is a React and TypeScript workspace backed by a FastAPI service. Users can upload a tabular dataset, inspect paged rows, ask text questions, and submit voice questions through the guarded financial-analysis graph.
 
-• Artificial Intelligence
-• Business Intelligence
-• Autonomous Agents
-• Financial Data Analysis
-PowerBI + ChatGPT + Autonomous Data Analyst
+The frontend does not generate sample answers, fake financial values, charts, market quotes, or document results. It only presents values returned by the API and labels capabilities that the API does not expose.
 
-This project is an AI-powered data analysis tool.
-It allows users to upload a dataset and ask questions in normal English.
-Instead of writing SQL queries or building dashboards manually, the system automatically:
+## Architecture
 
-✔ Understands the question
-✔ Converts it into a SQL query
-✔ Analyzes the dataset
-✔ Generates insights
-✔ Creates charts and dashboards
+```text
+frontend (React, TypeScript, Vite)
+  └─ FastAPI API client
+       ├─ dataset upload and preview
+       ├─ text and voice query services
+       └─ LangGraph guardrail → understanding → analysis → evidence → reasoning → output guardrail
+```
 
-In simple words, it works like having your own AI Financial Analyst.
+Dataset analysis uses the backend financial, trend, and anomaly engines. Text and voice turns can share a session ID; session history is bounded, in-memory, and cleared when the backend process restarts. Dataset storage is also in-memory.
 
-🚀 What This Project Does
+## Start the backend
 
-Normally, analyzing data requires:
-• Writing SQL queries
-• Using tools like PowerBI
-• Creating charts manually
+Create a private root `.env` with the backend's required credentials and configuration. Never put backend credentials in frontend variables.
 
-But with this system, you can simply ask questions like:
+```bash
+python -m pip install -r requirements.txt
+uvicorn api.main:app --reload --port 8000
+```
 
-What is the total sales?
-Which region has the highest revenue?
-Top 10 customers by sales
-Which product sold the most?
-Show sales trend by year
+The API reads `OPENAI_API_KEY` for query guardrails and, by default, reasoning. To route financial reasoning through local Qwen, set `FINANCIAL_REASONING_PROVIDER=qwen`; guardrail classifiers still use OpenAI. Qwen model loading is lazy and never triggers training. See the QLoRA section below. LangSmith tracing is enabled only when `LANGSMITH_TRACING=true`; configure its key and project in the backend environment if remote traces are intended.
 
-The system will automatically show:
+## Start the frontend
 
-✅ The correct answer
-✅ The SQL query used
-✅ Table results
-✅ Charts and dashboards
-✅ Business explanation of the result
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
 
-🖥 Application Interface
-This is the main interface where users upload the dataset and ask questions.
+`VITE_API_BASE_URL` is public browser configuration and defaults to `http://127.0.0.1:8000`. The backend allows the default Vite localhost origins and local Vite fallback ports. Set `FRONTEND_ORIGINS` for another frontend origin.
 
-![Interface](Screenshots/Interface.png)
+See [frontend/README.md](frontend/README.md) for page behavior, scripts, and API mapping.
 
+## API currently exposed
 
+| Method and path | Purpose |
+|---|---|
+| `GET /health` | API process health only |
+| `GET /model/status` | Configured reasoning provider, model, adapter availability/load state, quantization, and device |
+| `POST /datasets/upload` | Upload CSV, XLSX, or XLS; maximum 50 MB |
+| `GET /datasets/{dataset_id}?offset=0&limit=25` | Dataset metadata, column types, and paged preview |
+| `POST /query` | JSON dataset ID, question, optional session ID; returns answer, result, evidence, intent, and route |
+| `POST /voice/query` | Multipart dataset ID, optional session ID, and audio; returns transcript, answer, route metadata, and generated audio |
 
+Analytics prompts in the UI call `POST /query` and use its financial, trend, or anomaly route. There are no standalone chart or KPI endpoints.
 
-📂 Dataset Preview and Auto Analysis
+## Current limitations
 
-After uploading a dataset, the system automatically shows:
+- The API has no dataset listing or deletion operation, and dataset upload timestamps are not returned.
+- Conversation history is not available through a backend history endpoint or persistent storage.
+- The API has no document-ingestion endpoint. Internal RAG code is not exposed as a usable document-upload flow.
+- The query request has no market-symbol field. The MCP graph node therefore cannot receive a symbol through the current API contract.
+- `GET /health` does not report LangGraph, LLM, RAG, or MCP component status.
+- Voice processing requires browser microphone permission and configured backend speech services.
 
-• Top rows of the dataset
-• Basic analysis of the data
+## QLoRA training and local inference
 
-![Preview_&_Auto Analysis](Screenshots/top4rows&autoanalyzed data.png)
+The behavioral SFT dataset is in `fine_tuning/datasets/{train,validation,test}.jsonl`. `fine_tuning/train.py` validates all three splits, uses 4-bit NF4 QLoRA with the pinned Transformers/PEFT/TRL stack, and writes a portable PEFT adapter to `fine_tuning/output/final_adapter/`. Training requires a CUDA GPU and the model weights available locally or from Hugging Face. For the pinned RTX 3050 CUDA environment, install `requirements-qwen-cu121.txt` after `requirements.txt`. The adapter is not merged into the base model.
 
+```bash
+python fine_tuning/train.py
+python fine_tuning/inference.py --mode base
+python fine_tuning/inference.py --mode finetuned
+python fine_tuning/evaluate.py
+```
 
----
+The evaluator compares both model modes on the same held-out behavioral examples and records reference-term recall, unsupported numeric values, latency, generated tokens, and GPU memory when available. For the existing RAGAS judge metrics, set `RUN_RAGAS_LLM_EVAL=1` and configure `OPENAI_API_KEY`; that option makes external OpenAI calls. To deploy the trained adapter, set `FINANCIAL_REASONING_PROVIDER=qwen` and optionally configure `QWEN_BASE_MODEL`, `QWEN_ADAPTER_PATH`, `QWEN_LOAD_ADAPTER`, `QWEN_4BIT`, `QWEN_DEVICE`, and `QWEN_REQUIRE_ADAPTER`. With lazy loading, `/model/status` distinguishes an available adapter from one actually loaded into memory. A required but missing adapter is a configuration error.
 
-🤖 Autonomous AI Insights
-The system can automatically generate insights from the dataset.
+## Verification
 
-![Auto_Insights](Screenshots/Autonomus_AI_insights.png)
+Backend tests run without external model downloads when the local embedding model is cached:
 
+```bash
+HF_HUB_OFFLINE=1 python -m pytest -q
+python -m compileall -q api core tests
+```
 
+Frontend checks:
 
+```bash
+cd frontend
+npm run typecheck
+npm run lint
+npm test -- --run
+npm run build
+```
 
-📊 Auto Aggregation Insights
-
-The AI can automatically summarize important metrics from the data.
-
-Example:
-• Sales aggregation
-• Category analysis
-
-![Aggregation_Insights](Screenshots/Auto_Aggregation_Insights.png)
-
-
----
-
-⚠️ Auto Anomaly Detection
-
-The system can detect unusual patterns or anomalies in the data.
-
-![Anomaly_Detection](Screenshots/Auto_Anomaly_Detection.png)
-
-
----
-
-📈 Automatic Trend Visualization
-
-The system can automatically generate trend charts.
-
-Example:
-• Sales growth over time
-• Monthly performance
-
-![Trend_Visualization](Screenshots/visualization.png)
-
-![Trend_Visualization of Sales](Screenshots/Auto_trend_Visualization_of_Sales.png)
-
----
-
-🔥 Correlation Analysis
-
-The system can also analyze relationships between different variables.
-
-
-![Heat_map](Screenshots/Correlation_Heat_map.png)
-
----
-
-💬 Asking Questions in Insight Mode
-
-Users can ask questions directly to the AI analyst.
-
-Example:
-Average sales by segment
-
-
-
-🧠 Result in Insight Mode
-
-The AI explains the result in simple business language.
-Example explanation:
-> "Consumer segment shows the highest average sales compared to other segments."
-
-
-
-![Answer_in_insights_mode](Screenshots/Sample_Q_asked_in_Insights_mode.png)
-
-
-
----
-
-🧾 SQL Mode
-
-Users can also see the SQL query generated by the AI.
-This is helpful for people learning SQL.
-
-![Answer_in_Sql_mode](Screenshots/ans_of_sample_Q_in_SQL_mode_with_table.png)
-
-
----
-
-📊 Dashboard Mode
-The system can also create a dashboard visualization for the asked question.
-
-
-![Dash_board](Screenshots/result_in_Dashboard_mode.png)
-
----
-
-📉 Final Dashboard Visualization
-Charts are automatically generated for better understanding.
-
-![Dashboard_for_asked_question](Screenshots/Dashboard_of_asked_Query.png)
-
-
----
-
-🧠 How the System Works
-
-The system follows a simple process:
-
-User asks a question
-        ↓
-AI understands the question
-        ↓
-SQL query is generated
-        ↓
-Dataset is analyzed
-        ↓
-Results are returned
-        ↓
-Charts and insights are created
-
-The user only needs to ask questions about the dataset.
-
-
----
-
-🏗 System Architecture
-
-User Question
-      ↓
-Query Planner
-      ↓
-SQL Generator
-      ↓
-SQL Engine
-      ↓
-Dataset Analysis
-      ↓
-Insights + Charts
-
-
----
-
-📂 Project Structure
-
-project_root
-│
-├── core
-│   ├── agents
-│   │   ├── financial_agent.py
-│   │   ├── query_planner.py
-│   │   ├── agent_executor.py
-│   │   └── memory.py
-│   │
-│   └── engines
-│       ├── sql_engine.py
-│       ├── aggregation.py
-│       ├── anomaly_detector.py
-│       ├── correlation.py
-│       ├── financial_analyzer.py
-│       ├── metric_engine.py
-│       └── time_analyzer.py
-│
-├── dashboard
-│   ├── charts.py
-│   ├── kpi_cards.py
-│   └── auto_insights.py
-│
-├── data_preprocessing
-│   ├── load_data.py
-│   ├── clean_data.py
-│   ├── describe_data.py
-│   └── preview_data.py
-│
-├── reporting
-│   └── report_generator.py
-│
-├── utils
-│   ├── chart_generator.py
-│   └── column_classifier.py
-│
-├── Screenshots
-│
-├── app.py
-├── main.py
-└── requirements.txt
-
-
----
-
-⚙️ Technologies Used
-
-This project uses modern AI and data tools.
-
-Technology	Purpose
-
-Python	Core programming
-Pandas	Data analysis
-Streamlit	Web application
-Plotly	Interactive charts
-Seaborn	Statistical visualization
-pandasql	SQL queries on dataframe
-OpenAI API	Natural language understanding
-
-
-
----
-
-📊 Example Questions
-
-Financial Questions
-What is the total sales?
-Average sales per order
-Highest sales recorded
-
-
----
-
-Customer Questions
-Which customer ordered the most?
-Top 10 customers by sales
-Customer with least orders
-
-
----
-
-Product Questions
-Which product sold the most?
-Top products by revenue
-Most popular category
-
-
----
-
-Time Analysis
-Sales trend by year
-Orders per month
-Which month has the highest sales
-
-
----
-
-🛠 Installation
-
-Clone the repository
-git clone https://github.com/Saalim02/financial-intelligence-engine.git
-cd financial-intelligence-engine
-
-
----
-
-Install dependencies
-pip install -r requirements.txt
-
-
----
-
-Run the application
-
-streamlit run app.py
-
-
----
-
-🔑 OpenAI API Setup
-When running the application, enter your OpenAI API Key in the sidebar.
-
-
----
-
-📈 Example Workflow
-
-1️⃣ Upload a dataset (CSV / Excel)
-
-2️⃣ Select answer mode
-
-Insight
-SQL
-Dashboard
-
-3️⃣ Ask questions about the dataset
-
-4️⃣ The system automatically performs:
-
-Question → SQL → Data Analysis → Insights → Charts
-
-
----
-
-🎯 Why This Project Is Useful
-
-This project helps people analyze data without needing technical knowledge.
-
-Instead of learning:
-
-• SQL
-• Python
-• Data visualization tools
-
-Users can simply ask questions and get answers instantly.
-
-
----
+Paid OpenAI and remote LangSmith integration checks are isolated in `tests/integration/` and require explicit opt-in environment flags. Their generated test dataset and prompt are synthetic.

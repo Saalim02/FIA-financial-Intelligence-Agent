@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 
 from core.observability.logging import get_logger, log_event
 
@@ -75,6 +76,41 @@ def observe_node(node_name, node_function):
 
     return wrapped
 
+def extract_market_symbol(question: str) -> str | None:
+    """
+    Extract a stock/market ticker from a natural-language question.
+
+    Examples:
+        "What is the current stock price of AAPL?" -> "AAPL"
+        "Give me the market quote for MSFT" -> "MSFT"
+
+    This is intentionally generic and does not maintain
+    a hardcoded list of companies.
+    """
+    matches = re.findall(r"\b[A-Z]{1,5}(?:\.[A-Z]{1,3})?\b", question)
+
+    ignored = {
+        "WHAT",
+        "IS",
+        "THE",
+        "CURRENT",
+        "STOCK",
+        "PRICE",
+        "SHARE",
+        "MARKET",
+        "QUOTE",
+        "OF",
+        "FOR",
+        "GIVE",
+        "ME",
+    }
+
+    for match in matches:
+        if match not in ignored:
+            return match
+
+    return None
+
 
 def query_understanding(state: FinancialAgentState):
     """
@@ -94,6 +130,13 @@ def query_understanding(state: FinancialAgentState):
 
     question = state["question"]
     question_lower = question.lower()
+    # Resolve short follow-ups against this session's recent questions.
+    history = state.get("conversation_history", [])
+    contextual_question = question
+    if history and any(term in question_lower for term in ("which one", "grew", "faster", "that", "those")):
+        contextual_question = " ".join(
+            [turn.get("question", "") for turn in history[-4:]] + [question]
+        )
 
     df = state.get("df")
 
@@ -107,7 +150,7 @@ def query_understanding(state: FinancialAgentState):
     if df is not None:
         resolution = ColumnResolver.resolve(
             df=df,
-            question=question,
+            question=contextual_question,
         )
 
         entities = resolution.get(
@@ -139,10 +182,13 @@ def query_understanding(state: FinancialAgentState):
             "quote",
         ]
     ):
+        mcp_symbol = extract_market_symbol(question)
+
         return {
             "intent": "market_data",
             "route": "mcp",
             "entities": entities,
+            "mcp_symbol": mcp_symbol,
         }
 
     # ---------------------------------------------------------
@@ -195,8 +241,21 @@ def query_understanding(state: FinancialAgentState):
             "trend",
             "over time",
             "year",
+            "yearly",
+            "annually",
+            "annual",
+            "quarterly",
+            "quarter",
+            "monthly",
+            "month",
+            "weekly",
+            "week",
+            "daily",
+            "day",
             "growth",
             "change",
+            "grew",
+            "faster",
         ]
     ):
         return {

@@ -2,7 +2,6 @@ from core.graph.state import FinancialAgentState
 from core.engines.anomaly_detector import AnomalyDetector
 from core.engines.financial_analyzer import FinancialAnalyzer
 from core.engines.time_analyzer import TimeAnalyzer
-from core.rag.rag_node import FinancialRAG
 from core.mcp.client import MCPClient
 from core.guardrails.input_guardrails import validate_input
 from core.guardrails.classifier import GuardrailClassifier
@@ -106,19 +105,23 @@ def financial_analysis_node(state):
 
     result = financial_analyzer.run(
         df,
-        metrics=metrics
+        metrics=metrics,
+        question=state.get("question", ""),
     )
 
     return {
-        "result": result
+        "result": result,
+        "visualization": financial_analyzer.chart_data(
+            df,
+            metrics,
+            state.get("question", ""),
+        ),
     }
 
-financial_rag = FinancialRAG(
-    chunk_size=500,
-    chunk_overlap=50,
-)
+financial_rag = None
 
 def rag_node(state):
+    global financial_rag
     question = state["question"]
     document_path = state.get("document_path")
 
@@ -127,6 +130,16 @@ def rag_node(state):
             "result": [],
             "error": "No financial document was provided for RAG."
         }
+
+    if financial_rag is None:
+        # Keep the sentence-transformers / torch stack off the API startup
+        # path. Load it only when a document retrieval request is routed here.
+        from core.rag.rag_node import FinancialRAG
+
+        financial_rag = FinancialRAG(
+            chunk_size=500,
+            chunk_overlap=50,
+        )
 
     financial_rag.index_document(document_path)
 
@@ -143,13 +156,15 @@ def trend_node(state):
     df = state["df"]
     entities = state.get("entities", [])
 
-    result = time_analyzer.run(
+    analysis = time_analyzer.analyze(
         df,
-        entities=entities
+        entities=entities,
+        question=state.get("question", ""),
     )
 
     return {
-        "result": result
+        "result": analysis.get("error") or analysis["insights"],
+        "visualization": analysis.get("visualization"),
     }
 
 
@@ -196,6 +211,7 @@ def financial_reasoning_node(state: FinancialAgentState):
             answer = reasoning_llm.reason(
                 question=state["question"],
                 evidence=evidence,
+                conversation_history=state.get("conversation_history", []),
             )
 
             return {"answer": answer}

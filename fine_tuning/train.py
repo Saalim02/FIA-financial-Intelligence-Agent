@@ -27,7 +27,7 @@ from trl import SFTTrainer, SFTConfig
 BASE_DIR = Path(__file__).resolve().parent
 DATASET_DIR = BASE_DIR / "datasets"
 CONFIG_PATH = BASE_DIR / "configs" / "lora_config.yaml"
-OUTPUT_DIR = BASE_DIR / "output_behavioral"
+OUTPUT_DIR = BASE_DIR / "output" / "final_adapter"
 
 
 def load_config():
@@ -42,12 +42,14 @@ def validate_dataset():
         "test.jsonl",
     ]
 
+    counts = {}
     for filename in required_files:
         path = DATASET_DIR / filename
 
         if not path.exists():
             raise FileNotFoundError(f"Missing dataset: {path}")
 
+        count = 0
         with path.open("r", encoding="utf-8") as file:
             for line_number, line in enumerate(file, start=1):
                 record = json.loads(line)
@@ -72,8 +74,13 @@ def validate_dataset():
                         raise ValueError(
                             f"{filename}:{line_number} empty message"
                         )
+                count += 1
+        print(f"✓ {filename} validated: {count} examples")
+        counts[filename] = count
+    if any(count == 0 for count in counts.values()):
+        raise ValueError(f"Training, validation and test splits must be non-empty; found {counts}")
+    print(f"Behavioral dataset split sizes: {counts}")
 
-        print(f"✓ {filename} validated")
 
 
 def check_gpu():
@@ -204,8 +211,9 @@ def main():
 
     training_cfg = config["training"]
 
+    training_output = BASE_DIR / config["training"].get("output_dir", "output/final_adapter")
     sft_config = SFTConfig(
-        output_dir=str(OUTPUT_DIR),
+        output_dir=str(training_output),
         num_train_epochs=training_cfg["num_train_epochs"],
         per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
@@ -252,15 +260,24 @@ def main():
         processing_class=tokenizer,
     )
 
-    trainer.train()
+    train_result = trainer.train()
+    print("Training metrics:", train_result.metrics)
+    if hasattr(trainer, "state") and trainer.state.log_history:
+        print("Last training log:", trainer.state.log_history[-1])
 
     print()
     print("=" * 70)
     print("TRAINING COMPLETE")
     print("=" * 70)
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     trainer.save_model(str(OUTPUT_DIR))
     tokenizer.save_pretrained(str(OUTPUT_DIR))
+    (OUTPUT_DIR / "training_metadata.json").write_text(json.dumps({
+        "base_model": model_name, "epochs": training_cfg["num_train_epochs"],
+        "learning_rate": training_cfg["learning_rate"], "max_seq_length": max_seq_length,
+        "train_examples": len(dataset["train"]), "validation_examples": len(dataset["validation"]),
+    }, indent=2), encoding="utf-8")
 
     print()
     print("Adapter saved to:")

@@ -10,10 +10,16 @@ class FinancialReasoningResult(BaseModel):
 
 
 class FinancialReasoner:
-    def __init__(self, llm: LLMInterface):
+    """Evidence-grounded reasoning over a swappable model provider."""
+    def __init__(self, llm):
         self.llm = llm
 
-    def reason(self, question: str, evidence: list[dict]) -> str:
+    def reason(
+        self,
+        question: str,
+        evidence: list[dict],
+        conversation_history: list[dict] | None = None,
+    ) -> str:
         system_prompt = """
 You are a financial reasoning assistant.
 
@@ -36,16 +42,14 @@ Include the relevant calculation or interpretation when useful.
         user_prompt = json.dumps(
             {
                 "question": question,
+                "conversation_history": conversation_history or [],
                 "evidence": evidence,
             },
             ensure_ascii=False,
             default=str,
         )
 
-        result = self.llm.generate_structured(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_model=FinancialReasoningResult,
-        )
-
+        if hasattr(self.llm, "reason"):
+            return self.llm.reason(system_prompt, user_prompt)
+        result = self.llm.generate_structured(system_prompt, user_prompt, FinancialReasoningResult)
         return result.answer
