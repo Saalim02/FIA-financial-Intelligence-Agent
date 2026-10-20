@@ -1,9 +1,7 @@
 services:
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
+    image: 340290106613.dkr.ecr.ap-south-1.amazonaws.com/fia-backend:${FIA_IMAGE_TAG:-latest}
 
     container_name: fia-backend
 
@@ -19,9 +17,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: 340290106613.dkr.ecr.ap-south-1.amazonaws.com/fia-frontend:${FIA_IMAGE_TAG:-latest}
 
     container_name: fia-frontend
 
