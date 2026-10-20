@@ -16,6 +16,9 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
 
+    env:
+      OPENAI_API_KEY: ci-test-key
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,9 +35,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pytest
+      - name: Run application tests
         run: |
-          pytest -q
+          pytest -q tests
 
   docker-build:
     name: Build Docker Images
