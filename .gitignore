@@ -73,3 +73,15 @@ fine_tuning/checkpoints/
 # Model / ML caches
 .cache/
 .huggingface/
+
+# Docker
+docker-data/
+
+# AWS deployment secrets
+.env.aws
+
+# Local AWS installers/artifacts
+awscliv2.zip
+
+# Local Docker deployment files
+*.tar

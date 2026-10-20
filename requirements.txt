@@ -27,7 +27,7 @@ python-multipart
 # ==============================
 # LLM / OpenAI
 # ==============================
-openai==1.109.1
+openai==2.45.0
 python-dotenv==1.0.1
 
 # ==============================
@@ -37,19 +37,19 @@ langgraph==1.2.14
 langchain==1.4.3
 langchain-core==1.6.7
 langchain-community==0.4.2
-langchain-openai==1.6.7
+langchain-openai==1.1.9
 
 # ==============================
 # RAG
 # ==============================
 pypdf==6.19.0
 sentence-transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
 
 # ==============================
 # Evaluation / RAGAS
 # ==============================
-ragas==0.2.15
-datasets==3.2.0
 
 # ==============================
 # Testing
@@ -59,15 +59,7 @@ pytest
 # ==============================
 # Fine-tuning / QLoRA
 # ==============================
-transformers==4.46.3
-peft==0.13.2
-accelerate==1.0.1
-trl==0.12.2
-bitsandbytes==0.45.2
 
 # ==============================
 # Training Utilities
 # ==============================
-safetensors
-huggingface-hub==0.36.2
-tokenizers==0.20.3

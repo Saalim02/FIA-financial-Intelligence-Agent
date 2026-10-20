@@ -1,3 +1,11 @@
-# Install after requirements.txt on the supported CUDA 12.1 training host.
+# GPU / Qwen inference
 --extra-index-url https://download.pytorch.org/whl/cu121
+
 torch==2.5.1+cu121
+transformers==4.46.3
+peft==0.13.2
+accelerate==1.0.1
+bitsandbytes==0.45.2
+safetensors
+huggingface-hub==0.36.2
+tokenizers==0.20.3

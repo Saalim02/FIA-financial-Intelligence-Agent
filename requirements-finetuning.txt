@@ -1,0 +1,5 @@
+# Fine-tuning / QLoRA
+-r requirements-qwen-cu121.txt
+
+datasets==3.2.0
+trl==0.12.2

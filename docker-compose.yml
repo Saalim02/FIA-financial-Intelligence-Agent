@@ -1,0 +1,51 @@
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: fia-backend
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      FINANCIAL_REASONING_PROVIDER: qwen
+      QWEN_BASE_MODEL: Qwen/Qwen2.5-1.5B-Instruct
+      QWEN_ADAPTER_PATH: /app/fine_tuning/output
+      QWEN_LOAD_ADAPTER: "true"
+      QWEN_4BIT: "true"
+      QWEN_DEVICE: auto
+      QWEN_REQUIRE_ADAPTER: "false"
+
+      HF_HOME: /root/.cache/huggingface
+
+    volumes:
+      - ./fine_tuning/output:/app/fine_tuning/output:ro
+      - huggingface-cache:/root/.cache/huggingface
+
+    gpus: all
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: fia-frontend
+
+    ports:
+      - "5173:80"
+
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+
+volumes:
+  huggingface-cache:
