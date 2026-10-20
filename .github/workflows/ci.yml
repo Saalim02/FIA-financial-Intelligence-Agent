@@ -12,11 +12,22 @@ permissions:
 env:
   AWS_REGION: ap-south-1
   AWS_ACCOUNT_ID: "340290106613"
+
   ECR_BACKEND: fia-backend
   ECR_FRONTEND: fia-frontend
+
   EC2_INSTANCE_ID: i-05d81461c866ca7d7
 
+  # Production backend URL used by the React frontend
+  VITE_API_BASE_URL: http://13.235.42.215:8000
+
+
+# ============================================================
+# 1. TEST
+# ============================================================
+
 jobs:
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -25,6 +36,7 @@ jobs:
       OPENAI_API_KEY: ci-test-key
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -41,16 +53,30 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest -q tests
+        run: |
+          pytest -q tests
+
+
+# ============================================================
+# 2. DOCKER BUILD
+# ============================================================
 
   docker-build:
     name: Build Docker Images
+
     runs-on: ubuntu-latest
+
     needs: test
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      # -------------------------
+      # Backend
+      # -------------------------
 
       - name: Build backend image
         run: |
@@ -59,17 +85,31 @@ jobs:
             -t fia-backend:ci \
             .
 
+
+      # -------------------------
+      # Frontend
+      # -------------------------
+
       - name: Build frontend image
         run: |
           docker build \
             -f frontend/Dockerfile \
+            --build-arg VITE_API_BASE_URL=${{ env.VITE_API_BASE_URL }} \
             -t fia-frontend:ci \
             ./frontend
 
+
+# ============================================================
+# 3. DEPLOY TO AWS
+# ============================================================
+
   deploy:
     name: Deploy to AWS
+
     runs-on: ubuntu-latest
+
     needs: docker-build
+
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     permissions:
@@ -77,8 +117,18 @@ jobs:
       contents: read
 
     steps:
+
+      # -------------------------
+      # Checkout
+      # -------------------------
+
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      # -------------------------
+      # AWS OIDC
+      # -------------------------
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -86,31 +136,63 @@ jobs:
           role-to-assume: arn:aws:iam::340290106613:role/FIA-GitHub-Actions-Role
           aws-region: ${{ env.AWS_REGION }}
 
+
+      # -------------------------
+      # Verify AWS
+      # -------------------------
+
       - name: Verify AWS identity
         run: |
           aws sts get-caller-identity
 
+
+      # -------------------------
+      # ECR Login
+      # -------------------------
+
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+
+      # ======================================================
+      # BUILD BACKEND
+      # ======================================================
+
       - name: Build backend image
         run: |
+          set -e
+
           docker build \
             -f Dockerfile.cpu \
             -t ${{ env.ECR_BACKEND }}:${{ github.sha }} \
             -t ${{ env.ECR_BACKEND }}:latest \
             .
 
+
+      # ======================================================
+      # BUILD FRONTEND
+      # ======================================================
+
       - name: Build frontend image
         run: |
+          set -e
+
           docker build \
             -f frontend/Dockerfile \
+            --build-arg VITE_API_BASE_URL=${{ env.VITE_API_BASE_URL }} \
             -t ${{ env.ECR_FRONTEND }}:${{ github.sha }} \
             -t ${{ env.ECR_FRONTEND }}:latest \
             ./frontend
 
+
+      # ======================================================
+      # TAG BACKEND
+      # ======================================================
+
       - name: Tag backend for ECR
         run: |
+          set -e
+
           docker tag \
             ${{ env.ECR_BACKEND }}:${{ github.sha }} \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND }}:${{ github.sha }}
@@ -119,8 +201,15 @@ jobs:
             ${{ env.ECR_BACKEND }}:latest \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND }}:latest
 
+
+      # ======================================================
+      # TAG FRONTEND
+      # ======================================================
+
       - name: Tag frontend for ECR
         run: |
+          set -e
+
           docker tag \
             ${{ env.ECR_FRONTEND }}:${{ github.sha }} \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND }}:${{ github.sha }}
@@ -129,56 +218,190 @@ jobs:
             ${{ env.ECR_FRONTEND }}:latest \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND }}:latest
 
+
+      # ======================================================
+      # PUSH BACKEND
+      # ======================================================
+
       - name: Push backend to ECR
         run: |
+          set -e
+
           docker push \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND }}:${{ github.sha }}
 
           docker push \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND }}:latest
 
+
+      # ======================================================
+      # PUSH FRONTEND
+      # ======================================================
+
       - name: Push frontend to ECR
         run: |
+          set -e
+
           docker push \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND }}:${{ github.sha }}
 
           docker push \
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND }}:latest
 
+
+      # ======================================================
+      # DEPLOY USING AWS SSM
+      # ======================================================
+
       - name: Deploy through SSM
         run: |
+          set -e
+
+          echo "=========================================="
+          echo "Starting AWS deployment"
+          echo "Commit: ${{ github.sha }}"
+          echo "EC2: ${{ env.EC2_INSTANCE_ID }}"
+          echo "=========================================="
+
           COMMAND_ID=$(aws ssm send-command \
+            --region "${{ env.AWS_REGION }}" \
             --instance-ids "${{ env.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "FIA deployment ${{ github.sha }}" \
             --parameters commands='[
-              "cd ~/financial-intelligence-engine",
+              "set -e",
+              "cd /home/ubuntu/financial-intelligence-engine",
+              "echo Deployment directory: $(pwd)",
               "export FIA_IMAGE_TAG=${{ github.sha }}",
+              "echo Image tag: $FIA_IMAGE_TAG",
               "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 340290106613.dkr.ecr.ap-south-1.amazonaws.com",
               "docker compose -f docker-compose.aws.yml pull",
               "docker compose -f docker-compose.aws.yml up -d",
-              "docker image prune -f"
+              "docker ps",
+              "docker image prune -f",
+              "curl -fsS http://localhost:8000/health"
             ]' \
             --query "Command.CommandId" \
             --output text)
 
           echo "SSM Command ID: $COMMAND_ID"
 
+          echo "Waiting for deployment command..."
+
           aws ssm wait command-executed \
+            --region "${{ env.AWS_REGION }}" \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ env.EC2_INSTANCE_ID }}"
 
-      - name: Health check
+          echo "SSM deployment command completed."
+
+          echo "Fetching deployment output..."
+
+          aws ssm get-command-invocation \
+            --region "${{ env.AWS_REGION }}" \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ env.EC2_INSTANCE_ID }}" \
+            --query '{Status:Status,StatusDetails:StatusDetails,Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output json
+
+
+      # ======================================================
+      # PUBLIC BACKEND HEALTH CHECK
+      # ======================================================
+
+      - name: Backend health check
         run: |
+          set -e
+
+          echo "Checking production backend..."
+
           for i in {1..12}; do
-            if curl -fsS http://13.235.42.215:8000/health; then
-              echo "Backend health check passed"
+
+            echo "Health check attempt $i/12"
+
+            if curl -fsS --max-time 10 \
+              http://13.235.42.215:8000/health; then
+
+              echo ""
+              echo "=========================================="
+              echo "Backend health check PASSED"
+              echo "=========================================="
+
               exit 0
             fi
 
-            echo "Waiting for backend..."
+            echo "Backend not ready yet."
             sleep 10
+
           done
 
-          echo "Backend health check failed"
+          echo ""
+          echo "=========================================="
+          echo "Backend health check FAILED"
+          echo "=========================================="
+
           exit 1
+
+
+      # ======================================================
+      # PUBLIC FRONTEND HEALTH CHECK
+      # ======================================================
+
+      - name: Frontend health check
+        run: |
+          set -e
+
+          echo "Checking production frontend..."
+
+          for i in {1..12}; do
+
+            echo "Frontend check attempt $i/12"
+
+            if curl -fsSI --max-time 10 \
+              http://13.235.42.215:5173; then
+
+              echo ""
+              echo "=========================================="
+              echo "Frontend health check PASSED"
+              echo "=========================================="
+
+              exit 0
+            fi
+
+            echo "Frontend not ready yet."
+            sleep 10
+
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "Frontend health check FAILED"
+          echo "=========================================="
+
+          exit 1
+
+
+      # ======================================================
+      # DEPLOYMENT SUCCESS
+      # ======================================================
+
+      - name: Deployment successful
+        run: |
+          echo ""
+          echo "=================================================="
+          echo " FIA DEPLOYMENT SUCCESSFUL"
+          echo "=================================================="
+          echo ""
+          echo "Frontend:"
+          echo "http://13.235.42.215:5173"
+          echo ""
+          echo "Backend:"
+          echo "http://13.235.42.215:8000"
+          echo ""
+          echo "Health:"
+          echo "http://13.235.42.215:8000/health"
+          echo ""
+          echo "Image tag:"
+          echo "${{ github.sha }}"
+          echo ""
+          echo "=================================================="
