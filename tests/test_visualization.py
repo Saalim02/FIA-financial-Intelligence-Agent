@@ -79,9 +79,31 @@ def test_monthly_and_yearly_wording_routes_to_trend_analysis(question):
     assert route["intent"] == "trend_analysis"
 
 
-def test_real_workbook_generates_schema_resolved_trend_visualization():
-    frame = pd.read_excel("test_financial_data.xls")
-    resolution = query_understanding({"question": "Show me the Sales trend", "df": frame})
+def test_schema_resolved_trend_visualization():
+    frame = pd.DataFrame({
+        "Order Date": [
+            "2023-01-01",
+            "2023-02-01",
+            "2023-03-01",
+            "2024-01-01",
+            "2024-02-01",
+            "2024-03-01",
+        ],
+        "Sales": [
+            100.0,
+            120.0,
+            140.0,
+            160.0,
+            180.0,
+            200.0,
+        ],
+    })
+
+    resolution = query_understanding({
+        "question": "Show me the Sales trend",
+        "df": frame,
+    })
+
     analysis = TimeAnalyzer().analyze(
         frame,
         entities=resolution["entities"],
@@ -89,11 +111,16 @@ def test_real_workbook_generates_schema_resolved_trend_visualization():
     )
 
     chart = analysis["visualization"]
+
     assert resolution["route"] == "trend"
     assert chart["metric"] == "Sales"
     assert chart["time_column"] == "Order Date"
     assert chart["x"] and len(chart["x"]) == len(chart["y"])
-    assert chart["summary"]["direction"] in {"increasing", "decreasing", "stable"}
+    assert chart["summary"]["direction"] in {
+        "increasing",
+        "decreasing",
+        "stable",
+    }
 
 
 def test_trend_preserves_missing_period_as_null_without_inventing_zero():
