@@ -363,7 +363,7 @@ jobs:
             echo "Frontend check attempt $i/12"
 
             if curl -fsSI --max-time 10 \
-              http://13.235.42.215:5173; then
+              http://3.6.100.42:5173; then
 
               echo ""
               echo "=========================================="
@@ -398,7 +398,7 @@ jobs:
           echo "=================================================="
           echo ""
           echo "Frontend:"
-          echo "http://13.235.42.215:5173"
+          echo "http://3.6.100.42:5173"
           echo ""
           echo "Backend:"
           echo "http://3.6.100.42:8000"
