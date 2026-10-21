@@ -254,8 +254,9 @@ jobs:
       # ======================================================
 
       - name: Deploy through SSM
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           echo "=========================================="
           echo "Starting AWS deployment"
@@ -271,43 +272,71 @@ jobs:
             --parameters commands='[
               "set -e",
               "cd /home/ubuntu/financial-intelligence-engine",
-              "echo Deployment directory: $(pwd)",
               "export FIA_IMAGE_TAG=${{ github.sha }}",
-              "echo Image tag: $FIA_IMAGE_TAG",
-              "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 340290106613.dkr.ecr.ap-south-1.amazonaws.com",
-              "docker compose -f docker-compose.aws.yml pull",
-              "docker compose -f docker-compose.aws.yml up -d",
-              "docker ps",
-              "docker image prune -f",
-              "echo Waiting for backend to become healthy...",
-              "for i in $(seq 1 30); do if curl -fsS --max-time 5 http://localhost:8000/health; then echo Backend health check passed.; exit 0; fi; echo Backend not ready yet. Attempt $i/30...; sleep 5; done",
-              "echo Backend failed to become healthy.",
-              "docker ps",
-              "docker logs --tail 100 fia-backend",
-              "exit 1"
+              "export AWS_REGION=ap-south-1",
+              "export AWS_ACCOUNT_ID=340290106613",
+              "export ECR_REGISTRY=340290106613.dkr.ecr.ap-south-1.amazonaws.com",
+              "export DEPLOY_LOG=/tmp/fia-deploy-${{ github.sha }}.log",
+              "export DEPLOY_STATUS=/tmp/fia-deploy-${{ github.sha }}.status",
+              "rm -f \"$DEPLOY_LOG\" \"$DEPLOY_STATUS\"",
+              "nohup bash -c '\\''set -e; cd /home/ubuntu/financial-intelligence-engine; echo \"Deployment started: $FIA_IMAGE_TAG\" > \"$DEPLOY_LOG\"; aws ecr get-login-password --region \"$AWS_REGION\" | docker login --username AWS --password-stdin \"$ECR_REGISTRY\" >> \"$DEPLOY_LOG\" 2>&1; docker pull \"$ECR_REGISTRY/fia-backend:$FIA_IMAGE_TAG\" >> \"$DEPLOY_LOG\" 2>&1; docker pull \"$ECR_REGISTRY/fia-frontend:$FIA_IMAGE_TAG\" >> \"$DEPLOY_LOG\" 2>&1; export FIA_IMAGE_TAG; docker compose -f docker-compose.aws.yml up -d >> \"$DEPLOY_LOG\" 2>&1; echo \"Waiting for backend health...\" >> \"$DEPLOY_LOG\"; for i in $(seq 1 30); do if curl -fsS --max-time 5 http://localhost:8000/health >> \"$DEPLOY_LOG\" 2>&1; then echo \"Backend health check passed.\" >> \"$DEPLOY_LOG\"; docker image prune -f >> \"$DEPLOY_LOG\" 2>&1 || true; echo SUCCESS > \"$DEPLOY_STATUS\"; exit 0; fi; echo \"Backend not ready: attempt $i/30\" >> \"$DEPLOY_LOG\"; sleep 5; done; echo \"Backend health check failed.\" >> \"$DEPLOY_LOG\"; docker ps >> \"$DEPLOY_LOG\" 2>&1 || true; docker logs --tail 100 fia-backend >> \"$DEPLOY_LOG\" 2>&1 || true; echo FAILED > \"$DEPLOY_STATUS\"'\\'' > /dev/null 2>&1 < /dev/null &",
+              "echo \"Deployment process started in background.\"",
+              "echo \"Status file: $DEPLOY_STATUS\""
             ]' \
             --query "Command.CommandId" \
             --output text)
 
           echo "SSM Command ID: $COMMAND_ID"
 
-          echo "Waiting for deployment command..."
+          echo "Waiting for SSM launcher..."
 
           aws ssm wait command-executed \
             --region "${{ env.AWS_REGION }}" \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ env.EC2_INSTANCE_ID }}"
 
-          echo "SSM deployment command completed."
+          echo "SSM launcher completed."
 
-          echo "Fetching deployment output..."
+          echo "Polling deployment status..."
 
-          aws ssm get-command-invocation \
-            --region "${{ env.AWS_REGION }}" \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ env.EC2_INSTANCE_ID }}" \
-            --query '{Status:Status,StatusDetails:StatusDetails,Output:StandardOutputContent,Error:StandardErrorContent}' \
-            --output json
+          for i in {1..60}; do
+
+            STATUS_OUTPUT=$(aws ssm send-command \
+              --region "${{ env.AWS_REGION }}" \
+              --instance-ids "${{ env.EC2_INSTANCE_ID }}" \
+              --document-name "AWS-RunShellScript" \
+              --parameters commands="[\"if [ -f /tmp/fia-deploy-${{ github.sha }}.status ]; then cat /tmp/fia-deploy-${{ github.sha }}.status; else echo RUNNING; fi\"]" \
+              --query "Command.CommandId" \
+              --output text)
+
+            sleep 2
+
+            DEPLOY_STATUS=$(aws ssm get-command-invocation \
+              --region "${{ env.AWS_REGION }}" \
+              --command-id "$STATUS_OUTPUT" \
+              --instance-id "${{ env.EC2_INSTANCE_ID }}" \
+              --query "StandardOutputContent" \
+              --output text | tr -d '\r\n ')
+
+            echo "Deployment status: $DEPLOY_STATUS"
+
+            if [ "$DEPLOY_STATUS" = "SUCCESS" ]; then
+              echo "Deployment completed successfully."
+              exit 0
+            fi
+
+            if [ "$DEPLOY_STATUS" = "FAILED" ]; then
+              echo "Deployment failed."
+              exit 1
+            fi
+
+            sleep 8
+
+          done
+
+          echo "Deployment timed out."
+          exit 1
+
 
 
       # ======================================================
