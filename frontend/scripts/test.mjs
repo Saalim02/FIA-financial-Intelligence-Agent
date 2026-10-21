@@ -6,6 +6,7 @@ const result = spawnSync(process.execPath, [
   'src/pages/DashboardPage.test.mjs',
   'src/components/VisualizationChart.test.mjs',
   'src/state/datasetSession.test.mjs',
+  'src/utils/uuid.test.mjs',
 ], { cwd: process.cwd(), stdio: 'inherit' })
 
 process.exitCode = result.status ?? 1

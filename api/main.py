@@ -35,10 +35,13 @@ allowed_origins = [
     origin.strip()
     for origin in os.getenv(
         "FRONTEND_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
+        "http://localhost:5173,http://127.0.0.1:5173,http://3.6.100.42:5173",
     ).split(",")
     if origin.strip()
 ]
+production_frontend_origin = "http://3.6.100.42:5173"
+if production_frontend_origin not in allowed_origins:
+    allowed_origins.append(production_frontend_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

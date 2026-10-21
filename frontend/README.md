@@ -16,7 +16,7 @@ Start the API from the repository root:
 uvicorn api.main:app --reload --port 8000
 ```
 
-Set `VITE_API_BASE_URL` to the public FastAPI base URL. The backend defaults to allowing Vite at `http://localhost:5173` and `http://127.0.0.1:5173`; configure `FRONTEND_ORIGINS` when using another origin.
+Set `VITE_API_BASE_URL` to the public FastAPI base URL. The production Docker build defaults to `http://3.6.100.42:8000`, and the AWS Compose configuration allows the deployed frontend origin `http://3.6.100.42:5173`. Local development can continue using the `127.0.0.1` value in `.env.example`.
 
 Only public browser configuration belongs in this app's `.env`. Never put OpenAI, LangSmith, database, or cloud credentials in a `VITE_` variable.
 
@@ -43,6 +43,8 @@ Only public browser configuration belongs in this app's `.env`. Never put OpenAI
 | Voice | `POST /voice/query` | Multipart dataset ID, session ID, audio; returns transcript, answer, route metadata, and generated audio |
 
 The API accepts CSV, XLSX, and XLS files up to 50 MB. Datasets and backend session turns are held in process memory and are lost when the backend restarts. The UI retains the active dataset ID in browser session storage and message text only in page memory.
+
+Voice recording requires browser microphone access. Browsers generally restrict microphone access to HTTPS or localhost, so the public HTTP IP deployment may not support recording; use HTTPS to enable that feature.
 
 ## Known backend limitations
 

@@ -1,7 +1,7 @@
 import type { Dataset, DatasetPreview, ModelStatus, QueryResult, VoiceResponse } from '../types'
 
 const configuredBaseUrl = import.meta.env?.VITE_API_BASE_URL?.trim()
-const baseUrl = (configuredBaseUrl || 'http://127.0.0.1:8000').replace(/\/$/, '')
+const baseUrl = (configuredBaseUrl || 'http://3.6.100.42:8000').replace(/\/$/, '')
 
 type ApiFailureKind = 'unavailable' | 'timeout' | 'endpoint'
 

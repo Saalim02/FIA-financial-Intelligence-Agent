@@ -7,6 +7,7 @@ import {
   Send, Settings2, ShieldCheck, Sparkles, Square, Volume2, X,
 } from 'lucide-react'
 import { ApiError, api, apiErrorMessage } from './api/client'
+import { generateUUID } from './utils/uuid'
 import { confirmsDatasetMissing, restoreStillMatchesActiveDataset } from './state/datasetSession'
 import type { ChatMessage, Dataset, DatasetPreview, Evidence, ModelStatus, QueryResult, VoiceResponse } from './types'
 import VisualizationChart from './components/VisualizationChart'
@@ -28,7 +29,7 @@ const routes = [
 ]
 
 function newSession() {
-  return crypto.randomUUID()
+  return generateUUID()
 }
 
 function savedDatasetId(): string | null {
